@@ -1,23 +1,83 @@
 # SalesFlow-Lite
 
-A lightweight, Google Sheets-backed lead generation and sales pipeline CRM
-for small businesses — built to run on [OpenClaw](https://github.com/openclaw/openclaw).
+**An autonomous revenue-operations engine, disguised as a spreadsheet.**
 
-SalesFlow-Lite continuously searches a target geography (via Google Maps
-Places API) for businesses matching an operator's configured target
-categories, researches each one (website, email, phone, socials), evaluates
-product/service fit against the operator's own catalog, and runs qualified
-leads through a configurable sales pipeline with scheduled follow-ups and a
-strict no-drops policy — all stored in a single, human-readable Google Sheet.
+Most pipeline tooling fails small businesses for one of two reasons: it's
+built for enterprise sales teams and demands a headcount to administer, or
+it's a glorified contact list with no actual intelligence behind it.
+SalesFlow-Lite is neither. It is a fully autonomous, closed-loop
+lead-generation and pipeline-management system — sourcing, research,
+qualification, and structured follow-up run continuously, in the
+background, without a human touching a keyboard until a decision actually
+requires human judgment.
 
-It is designed to be **packaged and reused across many types of small
-businesses**, not just the print shop it was originally built for.
+Think of it as hiring a tireless SDR who never forgets a follow-up, never
+lets a lead go cold, and never sends an email without your sign-off first.
+
+**What it actually does, end to end:**
+
+1. **Sources** — continuously scans a target geography via the Google Maps
+   Places API for businesses matching your configured ideal-customer
+   categories. This is always-on top-of-funnel generation, not a one-time
+   list pull.
+2. **Qualifies** — enriches every prospect (website, contact info, socials)
+   and scores product/service fit against *your* catalog, so your funnel is
+   never diluted with leads that don't convert.
+3. **Advances** — runs every qualified lead through a configurable pipeline
+   state machine with scheduled, no-drop follow-ups. No lead silently
+   disappears; every terminal state is explicit and auditable.
+4. **Reports** — a live Dashboard and configurable digest give you funnel
+   visibility without you having to ask for it.
+
+All of it lives in one inspectable, human-readable Google Sheet — the
+system of record every stakeholder can already read, with zero new
+infrastructure to operate or hand off. It runs on
+[OpenClaw](https://github.com/openclaw/openclaw).
+
+It is engineered to be **packaged and redeployed across any small-business
+vertical** — the pipeline logic, guardrails, and reporting are configuration,
+not code, for the business you're actually running.
 
 > **Status: pre-implementation.** Specification and install recipe are
 > complete and approved (v1.0). Source modules are scaffolded but not yet
 > implemented — see [`CHANGELOG.md`](./CHANGELOG.md) for exact state.
 
 ---
+
+## How to actually get the most out of this: think like a Chief Sales Officer, not a spreadsheet clerk
+
+The single biggest lever you control is **category and geography precision**
+in your onboarding config. A CRM is only as good as the funnel it's fed —
+garbage targeting produces a Dashboard full of vanity metrics and a pipeline
+of leads that were never going to close. Before you flip this on:
+
+- **Define your ideal customer narrowly, then widen.** "Schools that need
+  banners" converts. "Any business that might need printing" does not.
+  Start narrow, watch the response-rate section of your digest, then widen
+  categories only where the data justifies it.
+- **Treat the research-completeness threshold as a qualification gate, not
+  a formality.** A lead that hasn't cleared a real research bar (working
+  contact info, verifiable fit) is not a lead — it is unqualified noise
+  competing for your outreach attention. Tune the threshold, don't just
+  accept the default.
+- **Read the guardrails as a budget, not a limit to max out.** Every daily
+  cap (API calls, LLM calls, drafts) is a lever between volume and quality.
+  Running at your ceiling every day means you've stopped tuning; running
+  meaningfully under it means you're leaving pipeline on the table.
+- **The digest is your weekly board meeting with yourself.** Read it like
+  one. Funnel counts moving the wrong direction week over week is a signal
+  to revisit targeting or messaging — not something to let accumulate
+  silently.
+- **You are the close, not the system.** SalesFlow-Lite's entire design
+  philosophy is to compress the expensive, repetitive parts of prospecting
+  (finding, researching, following up) down to zero marginal effort, so your
+  time is spent exclusively on the highest-leverage sales activity that
+  exists: talking to a qualified human being who already knows why you're
+  calling.
+
+Operated with discipline, this isn't a CRM you check. It's a funnel that
+feeds itself, and it compounds — every week of continuous, no-drop
+follow-up is pipeline a manual process would have silently lost.
 
 ## Why Sheets, not a database?
 

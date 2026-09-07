@@ -72,6 +72,25 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   values and a new `DIGEST_ENABLED` flag; `docs/RECIPE.md` questionnaire
   §1.7/§1.7a walks the operator through configuring destinations, routing,
   and an optional digest during onboarding.
+- **Model/token-budget awareness** (SPEC §19) — the app now reasons about
+  LLM calls in three abstract complexity tiers (`economy`/`standard`/
+  `premium`) rather than hardcoded model names, since available models
+  vary per OpenClaw install and change over time. New
+  `src/models/router.ts`: a pure `resolveModelForTask()` function
+  resolving, in strict precedence order, an operator `modelOverride`
+  (always wins, no exceptions) → an operator-configured or shipped-default
+  tier → that tier mapped through the operator's `tierModelMap` for their
+  chosen `posture` (`economy`/`balanced`/`quality`, default `balanced`).
+  Every LLM call is auditable via a new `ModelUsageLogEntry` domain type.
+  Two optional soft daily ceilings (`maxTokensPerDay`,
+  `maxEstimatedCostPerDayUsd`) are informational-only — crossing one logs
+  a `model_budget_warning` History event and can notify via the existing
+  multi-channel routing, but **never** aborts, downgrades, or delays an
+  in-flight cron run. New `TokenBudgetConfig` (added to `AppConfig` as
+  `tokenBudget`), `checkTierModelMapCompleteness()` doctor check, and
+  `docs/RECIPE.md` §1.8 onboarding questionnaire item walking the
+  installing agent through populating `tierModelMap` with real,
+  currently-available model ids.
 
 ### Fixed
 - `src/config/env.ts` no longer hardcodes an `AGENTMAIL_API_KEY`

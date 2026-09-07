@@ -385,4 +385,44 @@ export const notificationEnvSanityCheck: Check = {
   }
 };
 
+/**
+ * Check: if a tierModelMap is present in the operator's Config (passed in
+ * via env override for local/dry-run testing, since real Config lives in
+ * Sheets, not .env), it has an entry for every tier. Pure input, no I/O
+ * beyond the already-loaded env — mirrors checkGuardrailSanity()'s pattern
+ * of validating cross-field consistency zod's schema alone can't catch.
+ * Skips (not fails) when no tier map is supplied — this is expected before
+ * the installing agent has populated Config.tokenBudget (SPEC §19.2).
+ */
+export function checkTierModelMapCompleteness(
+  tierModelMap: Partial<{ economy: string; standard: string; premium: string }> | undefined
+): CheckResult {
+  if (!tierModelMap || Object.keys(tierModelMap).length === 0) {
+    return {
+      id: "tier-model-map-completeness",
+      label: "model tier map fully populated",
+      status: "skipped",
+      detail:
+        "No tierModelMap configured yet — the installing agent must populate Config.tokenBudget.tierModelMap with real model ids before LLM-using crons can run. See docs/SPEC.md §19.2."
+    };
+  }
+  const tiers: Array<"economy" | "standard" | "premium"> = ["economy", "standard", "premium"];
+  const missing = tiers.filter((tier) => !tierModelMap[tier]);
+  if (missing.length > 0) {
+    return {
+      id: "tier-model-map-completeness",
+      label: "model tier map fully populated",
+      status: "fail",
+      detail: `Config.tokenBudget.tierModelMap is missing entries for: ${missing.join(", ")}. Every task type resolves to one of these three tiers, so an incomplete map will throw the first time an uncovered tier is requested (see src/models/router.ts resolveModelForTask()).`,
+      fixable: false
+    };
+  }
+  return {
+    id: "tier-model-map-completeness",
+    label: "model tier map fully populated",
+    status: "pass",
+    detail: "All three tiers (economy/standard/premium) have a configured model id."
+  };
+}
+
 export { REQUIRED_ENV_VARS, REQUIRED_SHEET_TABS, dirname };

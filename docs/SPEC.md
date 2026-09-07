@@ -485,6 +485,51 @@ RECIPE.md §2.5 (dry run) and §2.6 (credential security verification) should bo
 3. ~~Scaffold the `salesflow-lite` repo~~ — **done; updated for `Comms_Threads`/collateral types, provider-agnostic email client, and this round's schema additions (`source`, `dnc`, `snooze_until`, `dup_of_lead_id`).**
 4. ~~Code review of the scaffold~~ — **done, see §16 / `docs/CODE_REVIEW.md`.**
 5. ~~Doctor/diagnostic tooling~~ — **done, see §17 / `src/doctor/`.**
-6. Once Rick has Google Cloud credentials: provision service account, stand up the San Antonio print shop reference instance, pin down radius + target business types at that point.
-7. Implement the stub modules for real per their embedded spec references, including this round's additions (duplicate check, DNC check, snooze skip, backup export, Dashboard formulas).
-8. Local build validation using the reference instance as the dogfood test of the recipe itself.
+6. ~~Multi-channel notifications + configurable digest~~ — **done, see §7 / `src/notifications/`.**
+7. ~~Model/token-budget awareness~~ — **done, see §19 / `src/models/router.ts`.**
+8. Once Rick has Google Cloud credentials: provision service account, stand up the San Antonio print shop reference instance, pin down radius + target business types at that point.
+9. Implement the stub modules for real per their embedded spec references, including this round's additions (duplicate check, DNC check, snooze skip, backup export, Dashboard formulas).
+10. Local build validation using the reference instance as the dogfood test of the recipe itself.
+
+---
+
+## 19. Model & Token-Budget Awareness (2026-09-07, fourth round)
+
+**Rationale**: The app makes multiple LLM calls per lead per cron run (categorization in the research loop, digest rendering, draft composition), and different operators have very different cost tolerances — a solo print-shop owner processing 20 leads/week has different needs than someone running a higher-volume operation. Rather than hardcode one model choice, the app should *recommend* an appropriately-sized model per task type based on the task's actual complexity, track estimated usage, and let the operator see and override every recommendation. **The app never silently swaps a model mid-run or auto-throttles based on cost** — all of this is advisory, with configuration and final say resting entirely with the operator.
+
+### 19.1 Task complexity tiers, not raw model names
+
+The app reasons about three abstract tiers — `economy`, `standard`, `premium` — rather than hardcoding specific model identifiers, since available models and their relative cost/quality change over time and vary by OpenClaw install. Each LLM-using task type ships a **recommended tier** based on its inherent complexity, not the operator's budget:
+
+| Task type | Recommended tier | Why |
+|---|---|---|
+| `lead_categorization` | `standard` | Needs real judgment (matching a business description against the category catalog) but is a bounded, structured classification task — doesn't need the strongest available model. |
+| `research_summary` | `economy` | Mostly extraction/formatting of already-scraped text — low reasoning load. |
+| `draft_composition` | `premium` | Client-facing text the operator will actually send after review — quality matters most here, this is the one place worth spending more. |
+| `digest_rendering` | `economy` | Pure formatting of already-computed Dashboard numbers into prose — no real reasoning required. |
+
+These are the shipped defaults (`src/models/router.ts`'s `DEFAULT_TASK_ROUTING`) — an operator can change the recommended tier for any task type, or pin an explicit model id that always wins regardless of tier/posture (`taskRouting[].modelOverride` in Config, §19.4).
+
+### 19.2 Budget posture
+
+Separately from per-task tiers, the operator picks an overall **budget posture** — `economy`, `balanced` (default), or `quality` — which determines which *actual* model fills each tier. The tier mapping (§19.1) already encodes task complexity; posture only shifts which concrete model an install uses to fill each tier bucket. E.g. a `quality`-postured install's `economy` tier might still map to a perfectly capable but cheap model — posture shifts the whole ladder up or down, it doesn't collapse the tiers into one model.
+
+The concrete tier→model mapping per posture (`tierModelMap` in Config) is left to the installing agent to populate with real model ids available on the operator's OpenClaw install at setup time — this app deliberately does not hardcode provider/model names, since that list changes and varies by install (see RECIPE.md §1.8).
+
+### 19.3 Usage tracking (advisory, not a throttle)
+
+Every LLM call across any cron logs a `ModelUsageLogEntry` (`src/types/domain.ts`): timestamp, task type, tier, model actually used, whether it was an operator override, optional per-lead reference, and estimated token/cost figures (best-effort — providers don't uniformly expose exact costs). This is purely a record, mirroring the "no silent drops" auditability the app already applies to lead data and notifications (§7.3) — an operator (or the digest, §7.2, via a new optional `llm_usage` section) can see what was actually spent without the app ever needing to act on that number itself mid-run.
+
+Two **soft, informational-only** daily ceilings can be set (`TokenBudgetConfig.maxTokensPerDay`, `maxEstimatedCostPerDayUsd`): if a day's logged usage crosses either, the app logs a `model_budget_warning` History event and can notify the operator through the existing multi-channel routing (§7.1) — it does **not** stop, downgrade, or delay any in-flight cron run. Finishing the current batch and flagging the crossing for the operator's attention next run is safer than a run aborting mid-lead and leaving a lead in an inconsistent state.
+
+### 19.4 Operator override always wins
+
+`Config.tokenBudget.taskRouting[].modelOverride`, when set for a task type, is used verbatim — the recommended tier and posture-derived model are not consulted at all for that task type. This is a hard rule, mirroring the drafts-only and never-auto-merge patterns already established elsewhere in this spec: **the app recommends, the operator decides.** `src/models/router.ts`'s `resolveModelForTask()` is a pure function (task type + config → model id + tier + whether it was an override) specifically so this precedence order has a dedicated, unit-tested seam rather than being buried inside a cron's control flow.
+
+### 19.5 Boundaries
+
+- This is not a live cost-optimization engine — no dynamic model-swapping based on lead complexity, no bidding between providers, no A/B testing of model choice. It's a configuration and visibility layer.
+- Not responsible for provider rate-limit handling — that's already covered for Google APIs (§4 step 9) and would need its own per-provider treatment if added for LLM providers later; out of scope for this round.
+- Recommendation tiers and defaults live in code (`DEFAULT_TASK_ROUTING`) as a maintained, documented starting point — not meant to be the final word for every install; the questionnaire (RECIPE.md §1.8) explicitly invites the operator to change any of it.
+
+---

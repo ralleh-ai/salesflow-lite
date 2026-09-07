@@ -76,6 +76,73 @@ export const DigestConfigSchema = z.object({
 });
 export type DigestConfig = z.infer<typeof DigestConfigSchema>;
 
+/**
+ * Model/token-budget awareness (SPEC §19). The app never silently picks a
+ * model on the operator's behalf mid-run — it recommends a tier per task
+ * type based on task complexity + configured budget posture, and the
+ * operator's explicit `modelOverride` (if set) always wins. Recommendations
+ * are informational only unless the operator has left a task on "auto".
+ */
+export const TaskComplexityTierSchema = z.enum(["economy", "standard", "premium"]);
+export type TaskComplexityTier = z.infer<typeof TaskComplexityTierSchema>;
+
+export const LlmTaskTypeSchema = z.enum([
+  "lead_categorization",
+  "research_summary",
+  "draft_composition",
+  "digest_rendering"
+]);
+export type LlmTaskType = z.infer<typeof LlmTaskTypeSchema>;
+
+/**
+ * One entry in the operator-visible model recommendation table.
+ * `recommendedTier` is what the app suggests based on the task's inherent
+ * complexity; the operator can pin an explicit `modelOverride` (a real
+ * model id/string, app-agnostic — whatever their OpenClaw install exposes)
+ * that always wins over the recommendation. Leaving `modelOverride` unset
+ * means "use my budget posture's default model for this tier" (see
+ * `ModelBudgetPostureSchema`/`ModelTierMapSchema`).
+ */
+export const LlmTaskRoutingSchema = z.object({
+  taskType: LlmTaskTypeSchema,
+  recommendedTier: TaskComplexityTierSchema,
+  modelOverride: z.string().optional(),
+  rationale: z.string().optional()
+});
+export type LlmTaskRouting = z.infer<typeof LlmTaskRoutingSchema>;
+
+/**
+ * Maps a complexity tier to an actual model id/string per budget posture.
+ * "economy"/"balanced"/"quality" are the operator's overall stance, not a
+ * per-task setting — the *tier* mapping already reflects task complexity;
+ * the *posture* only shifts which concrete model fills each tier (e.g. an
+ * economy posture's "premium" tier model is still cheaper than a quality
+ * posture's "premium" tier model).
+ */
+export const ModelBudgetPostureSchema = z.enum(["economy", "balanced", "quality"]);
+export type ModelBudgetPosture = z.infer<typeof ModelBudgetPostureSchema>;
+
+export const ModelTierMapSchema = z.object({
+  economy: z.string(),
+  standard: z.string(),
+  premium: z.string()
+});
+export type ModelTierMap = z.infer<typeof ModelTierMapSchema>;
+
+export const TokenBudgetConfigSchema = z.object({
+  /** Overall stance; changes which concrete model each tier maps to by default. Operator can still override any individual task. */
+  posture: ModelBudgetPostureSchema.default("balanced"),
+  /** Explicit model id per tier for the chosen posture; lets an operator customize even within "balanced" without switching posture. */
+  tierModelMap: ModelTierMapSchema.optional(),
+  /** Per-task-type routing table; app ships sane recommended tiers, operator can override per task. Recommendation-only — never auto-applied without the operator having set it (or accepted the shipped default). */
+  taskRouting: z.array(LlmTaskRoutingSchema).default([]),
+  /** Soft daily token ceiling across all LLM-using crons combined — informational/alerting only, does not hard-stop a run mid-lead (finishing a small in-flight batch and flagging it next run beats a run aborting halfway through). */
+  maxTokensPerDay: z.number().int().positive().optional(),
+  /** Soft daily USD-cost ceiling; same informational/alerting posture as maxTokensPerDay, both may be set together. */
+  maxEstimatedCostPerDayUsd: z.number().positive().optional()
+});
+export type TokenBudgetConfig = z.infer<typeof TokenBudgetConfigSchema>;
+
 export const CollateralMappingSchema = z.object({
   productFitCategory: z.string().optional(),
   collateralName: z.string(),
@@ -95,6 +162,7 @@ export const AppConfigSchema = z.object({
   notifications: z.array(NotificationRouteSchema).default([]),
   notificationDestinations: z.array(NotificationDestinationSchema).default([]),
   digest: DigestConfigSchema.optional(),
+  tokenBudget: TokenBudgetConfigSchema.optional(),
   templateCollateralMap: z.array(CollateralMappingSchema).default([]),
   quietHours: z
     .object({

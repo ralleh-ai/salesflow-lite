@@ -32,7 +32,8 @@ export type HistoryEventType =
   | "notification_sent"
   | "outreach_draft_created"
   | "manual_edit"
-  | "digest_sent";
+  | "digest_sent"
+  | "model_budget_warning";
 
 export type CommsChannel = "email" | "call" | "sms" | "in_person" | "other";
 export type CommsDirection = "outbound" | "inbound";
@@ -46,6 +47,30 @@ export type DncReason = "operator_added" | "unsubscribe_request" | "bounced_hard
 
 export type NotificationChannelKind =
   "telegram" | "email" | "sms" | "discord" | "slack" | "webhook" | "none";
+
+export type TaskComplexityTier = "economy" | "standard" | "premium";
+export type ModelBudgetPosture = "economy" | "balanced" | "quality";
+export type LlmTaskType =
+  "lead_categorization" | "research_summary" | "draft_composition" | "digest_rendering";
+
+/**
+ * One row appended per LLM call across any cron, so token/cost usage is
+ * auditable the same way lead data is (SPEC §19.3). Never used to
+ * silently throttle or swap models mid-run — purely a record for the
+ * doctor/dashboard to read back and for the operator to review.
+ */
+export interface ModelUsageLogEntry {
+  logId: string;
+  timestamp: string;
+  taskType: LlmTaskType;
+  tier: TaskComplexityTier;
+  modelUsed: string;
+  wasOperatorOverride: boolean;
+  leadId?: string;
+  estimatedInputTokens?: number;
+  estimatedOutputTokens?: number;
+  estimatedCostUsd?: number;
+}
 
 /** One row logged whenever a notification or digest is actually dispatched. See docs/SPEC.md §7.3. */
 export interface NotificationLogEntry {
