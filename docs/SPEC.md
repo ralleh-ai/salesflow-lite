@@ -122,6 +122,47 @@ This is print-shop-flavored by default but fully replaceable per install — thi
 
 Captures API failures, quota hits, scrape failures, malformed data — separate from `History` so business audit trail stays clean. Columns: `timestamp`, `component`, `lead_id` (nullable), `error_type`, `message`, `retry_count`.
 
+### 3.6 Tab: `Comms_Threads` (client communication history)
+
+A dedicated, queryable log of every communication touchpoint with a lead — distinct from `History` (which logs *system/pipeline events*) and distinct from the AgentMail inbox itself (which is the actual message store). This tab is the CRM-style "conversation view" an operator can scan per-lead without opening AgentMail. One row per message/touchpoint (not per lead — a lead will have many rows over its lifecycle).
+
+| Column | Type | Notes |
+|---|---|---|
+| `thread_event_id` | text (UUID) | Primary key. |
+| `lead_id` | text | FK to `Leads`. |
+| `channel` | enum | `email` \| `call` \| `sms` \| `in_person` \| `other` — extensible; email is the only channel the app itself automates in v1 (as drafts), others are operator-logged manually. |
+| `direction` | enum | `outbound` \| `inbound`. |
+| `timestamp` | datetime | When the message/touchpoint occurred. |
+| `subject` | text | Email subject, or a short label for non-email touchpoints (e.g. "Follow-up call"). |
+| `summary` | text | Short human/LLM-generated summary of the message content — kept short deliberately so the tab stays scannable; full body lives in the `body_ref` link, not duplicated here. |
+| `body_ref` | text | Link/reference to the full message — an AgentMail thread/message URL or id for email; free text for manually logged touchpoints. |
+| `external_thread_id` | text | AgentMail thread id (or other provider's thread id) for programmatic correlation — this is what inbound-reply matching (§6.3) keys off of. |
+| `logged_by` | text | `pipeline_cron` \| `operator` \| `system`. |
+| `sentiment` | text (optional) | Optional LLM-assessed tone (`positive`/`neutral`/`negative`/`unclear`) — nice-to-have for prioritization, not required for v1 core logic. |
+
+Rules:
+- **Every** outbound draft created (§6.3) gets a corresponding `outbound` row here at draft-creation time (not at send time, since the app can't observe sends) — so the operator sees a full timeline even before manually hitting send.
+- **Every** inbound reply detected (via AgentMail webhook/polling) gets an `inbound` row, and is what drives the `pipeline_stage` advance toward `engaged` (§6.3).
+- Manual touchpoints (a phone call, an in-person visit) are logged by the operator directly into this tab, or via a future lightweight logging affordance — out of scope to automate in v1 beyond making the tab exist and be easy to hand-fill.
+- This tab, like `History`, is append-only from the app's perspective — corrections happen by adding a new row referencing the old one in `summary`/`body_ref`, not by editing history.
+
+### 3.7 Google Docs: templates, brochures, and sales collateral
+
+Google Sheets is the data store; **Google Docs (and Drive generally) is the collateral store.** Operators need somewhere to keep the actual content they send/attach — email templates, brochures, rate sheets, sample proposals/RFP responses, invoices — that's reusable across leads and easy for a non-technical operator to edit without touching code or the Sheets schema.
+
+Design:
+- A dedicated **Drive folder** per install (e.g. "SalesFlow-Lite — `<Business Name>` — Collateral"), shared with the same service account used for Sheets, holds:
+  - **Email templates** (Google Docs), one per `product_fit_category` at minimum (e.g. a "banners" intro template, a "menus_signage" intro template), referenced by `product_fit_category` name so the pipeline cron can look up the right template when composing a draft (§6.3).
+  - **Brochures / sales collateral** (Docs, Slides, or PDFs uploaded to Drive) — attachable to outreach drafts.
+  - **Invoices / proposals / RFP responses** — same folder, or clearly named subfolders, so they're discoverable per engagement stage.
+- A new `Config` section, **Template & Collateral Map**, records: `product_fit_category` → `template_doc_id`, plus a general-purpose list of `collateral_name` → `drive_file_id` → `attach_to_stage` (which pipeline stage(s) this collateral is relevant for, e.g. attach the brochure at `qualified`, attach a proposal template at `proposal_sent`).
+- **Placeholder syntax in templates**: Doc-based templates use the same `{{business_name}}`, `{{product_fit_category}}` etc. placeholder convention as the existing template mechanism (§6.3) — the pipeline cron fetches the Doc's content (Docs API, or exported plaintext/HTML), performs placeholder substitution, and uses the result as the draft body. This keeps templates operator-editable in a familiar tool (Google Docs) rather than buried in Sheets cells or code.
+- **Attachments**: when the pipeline cron creates a draft (§6.3) and the current stage/category has mapped collateral, the relevant Drive file(s) are attached to the draft (exact mechanism — Drive file export + AgentMail/provider attachment API vs. a shareable Drive link embedded in the body — is an implementation detail decided during build; a shareable link is the simpler/safer default since it avoids binary attachment handling and keeps the operator in control of Drive sharing permissions).
+- This is still governed by the drafts-only hard rule (§6.3): attaching collateral to a draft is not sending it. No new send risk is introduced.
+- Recorded in `Comms_Threads` (§3.6): the `summary`/`body_ref` for a draft that used a template + attached collateral should note which template/collateral was used, so the operator can audit what a lead was actually sent (once they hit send) without re-opening the draft.
+
+This is intentionally a thin, Drive-native layer rather than a document-generation engine — SalesFlow-Lite does not generate brochures/invoices from scratch; it helps operators reuse and correctly attach documents they already have or create directly in Google Docs/Sheets/Slides.
+
 ---
 
 ## 4. Discovery Loop (Lead Sourcing)
@@ -209,11 +250,24 @@ Design:
 - The `pipeline_cron`, when a lead's `next_action_type` is an outreach action (e.g. `send_intro_email`, `send_follow_up_email`), calls the AgentMail API to **write a draft only** (AgentMail's draft/compose endpoint, not its send endpoint), using a template selected by `product_fit_category` (templates configurable in `Config`, with `{{business_name}}`, `{{product_fit_category}}` etc. placeholders).
 - **The app's AgentMail API credentials must never be granted send scope/permission if AgentMail's API supports scoping keys that narrowly; if only one all-or-nothing key is available, the send codepath is simply never implemented/called — draft-creation only, enforced in code, not just by convention.**
 - The operator reviews drafts in the AgentMail inbox (or connected mail client) and sends manually. This is a deliberate human-in-the-loop gate on all outbound business communication — no automated system emails a real business on this operator's behalf without a human pressing send.
-- Every draft creation is logged to `History` (`event_type=outreach_draft_created`) with the AgentMail draft/thread id stored in `detail`, so the operator can locate it and so replies can be correlated back to the lead later.
-- **Inbound replies**: AgentMail supports webhooks for incoming mail. A lightweight webhook receiver (or polling fallback if webhooks aren't wired up yet) matches inbound messages to a lead (by thread id or sender email) and advances `pipeline_stage` toward `engaged`, logging the reply to `History`. Exact receiver mechanism (webhook endpoint vs. OpenClaw-side polling) is an implementation detail decided during build, not this spec.
+- Every draft creation is logged to `History` (`event_type=outreach_draft_created`) with the AgentMail draft/thread id stored in `detail`, so the operator can locate it and so replies can be correlated back to the lead later. **It is also logged as an `outbound` row in `Comms_Threads` (§3.6)** — `History` records the pipeline-level event; `Comms_Threads` records the actual communication content/thread for the operator's client-facing view.
+- **Inbound replies**: AgentMail supports webhooks for incoming mail. A lightweight webhook receiver (or polling fallback if webhooks aren't wired up yet) matches inbound messages to a lead (by thread id or sender email) and advances `pipeline_stage` toward `engaged`, logging the reply to `History` **and appending an `inbound` row to `Comms_Threads`**. Exact receiver mechanism (webhook endpoint vs. OpenClaw-side polling) is an implementation detail decided during build, not this spec.
 - **Safety rails**: draft-creation volume is still capped by a configurable daily limit (same cost-guardrail pattern as Places/LLM calls, see §9.1) to avoid runaway API usage, even though drafts carry no send risk to third parties.
 - This still respects the "no drops" principle: if AgentMail draft creation fails (bad address, API error), that's logged to `Errors` and the lead's `next_action_at` is rescheduled for retry — never silently marked done.
 - `pipeline_stage` only advances to `outreach_attempted` once a draft is confirmed created — not once it's sent, since the app has no visibility into or control over the manual send step. A future stage/flag (e.g. `draft_pending_send`) may be added if the operator wants the pipeline to distinguish "drafted" from "actually sent"; out of scope for v1 unless requested.
+
+### 6.4 Email provider options (if not using AgentMail)
+
+AgentMail is the default recommendation because it's purpose-built for agent-driven email (API-first inbox provisioning, native draft/compose + send separation, threading, webhooks) — but it is **not** a hard dependency of the architecture. Any provider that exposes a **create-draft-without-sending** API call can satisfy §6.3's hard rule. Alternatives, roughly ordered by fit:
+
+| Provider | Fit for drafts-only automation | Notes |
+|---|---|---|
+| **Gmail API** (operator's own Google Workspace/Gmail account) | Strong | `users.drafts.create` is a first-class, well-documented endpoint completely separate from `users.messages.send` — very easy to enforce the hard rule in code (simply never call the send method). Natural fit if the operator already runs Google Workspace, since the same Google Cloud project used for Sheets/Places can also hold Gmail API OAuth credentials. Requires OAuth consent (not a service account) since it acts on a real mailbox — slightly more setup than a service account. |
+| **Microsoft Graph API** (Outlook/Microsoft 365) | Strong | `POST /users/{id}/messages` with `isDraft` semantics / the drafts folder is well-supported; good option if the operator is on Microsoft 365 instead of Google Workspace. |
+| **AgentMail** | Strong, purpose-built | Default recommendation — see §6.3. Best fit when the operator doesn't want to touch their real business mailbox at all and prefers a dedicated agent-facing inbox. |
+| **SendGrid / Postmark / Mailgun (transactional email APIs)** | Weak for drafts-only | These are built around *sending*, not drafting — most don't have a native "draft" concept at all. Using one here would require faking drafts (e.g. storing the composed email only in `Comms_Threads`/Sheets and never calling the provider until a human explicitly triggers a separate send step outside the API's normal flow). Only recommend this path if the operator already has a transactional-email relationship with one of these and doesn't want to add AgentMail/Gmail/Graph — treat as a fallback, not a preferred option. |
+
+Whichever provider is used, the codebase must isolate it behind the same `AgentMailClient`-shaped interface (`createDraft`, `listInboundMessages`) defined in `src/agentmail/client.ts`, so swapping providers doesn't ripple through `pipeline_cron` logic. The **drafts-only hard rule (§6.3, `SECURITY.md`) applies regardless of provider** — it is a project invariant, not an AgentMail-specific one.
 
 ---
 
@@ -272,10 +326,33 @@ All values configurable without redeploying — edit `Config` tab, cron reads fr
 
 ---
 
-## 11. Next Steps
+## 12. Credential Security (OpenClaw environment)
+
+Applies to every install, every provider choice (AgentMail, Gmail, Graph, etc.) and every API (Google Cloud, Places, Sheets). See also `SECURITY.md` for the project-wide hard invariants this section operationalizes.
+
+- **Never store real credentials in Google Sheets, in chat, in `docs/`, or in code.** Credentials live in exactly one place: the OpenClaw environment's secret/config mechanism for that install (OpenClaw-managed `.env` under the install's own workspace directory, or the OpenClaw config secret store if the deployment uses one) — never hardcoded, never committed.
+- **`.env` is gitignored by default in this repo** (see `.gitignore`) — verify this holds for every install's actual working copy, not just the template repo.
+- **Google service account JSON keys** are treated as bearer credentials to the operator's entire Google Cloud project scope granted to that account. Store the key file path in `.env` (`GOOGLE_SERVICE_ACCOUNT_KEY_PATH`), store the file itself outside version control (the `credentials/` path is gitignored), and restrict file permissions on the host (e.g. `chmod 600`) where the OS supports it.
+- **AgentMail (or Gmail/Graph) API keys** follow the same rule: `.env` reference only, never in Sheets/Docs/Drive, never pasted into a chat/log that gets persisted insecurely.
+- **One credential set per install.** Do not reuse a service account, AgentMail inbox, or API key across multiple operators' installs — a compromised credential in one install must not expose another operator's data.
+- **Recipe enforcement**: `docs/RECIPE.md` §2 (Provisioning Steps) must always instruct the installing agent to place every credential exclusively into that install's OpenClaw-managed environment configuration, confirm no credential value was echoed into Sheets/Docs/chat during setup, and confirm `.gitignore` coverage before the install is considered complete. This is a mandatory step in the recipe, not an optional hardening note.
+- **Rotation**: if a credential is ever suspected exposed (accidental commit, chat paste, log leak), rotate it immediately at the provider (Google Cloud service account key regeneration + old key deletion; AgentMail/Gmail/Graph key revocation + reissue) rather than assuming a deleted file/message fully remediates exposure.
+
+---
+
+## 13. Decisions Locked (2026-09-07, second round)
+
+6. **Client communications history**: added as a new `Comms_Threads` tab (§3.6) — a per-lead, per-touchpoint communication log distinct from the system-event `History` tab, giving operators a scannable conversation view without opening the email provider directly.
+7. **Email provider flexibility**: AgentMail remains the default recommendation, but §6.4 documents Gmail API and Microsoft Graph API as strong alternatives (both have clean native draft-only endpoints), with transactional-email APIs (SendGrid/Postmark/Mailgun) noted as weak/fallback options since they lack native drafting. All providers must sit behind the same client interface and honor the drafts-only hard rule.
+8. **Google Docs/Drive for collateral**: added §3.7 — a Drive folder per install holds email templates, brochures, invoices, proposals, and RFP responses; a new Config "Template & Collateral Map" section links these to `product_fit_category` and pipeline stages so the pipeline cron can select and attach (or link) the right collateral when creating drafts.
+9. **Credential security**: formalized in §12 — all credentials live only in OpenClaw-managed environment config per install, never in Sheets/Docs/chat/git; `RECIPE.md` must explicitly instruct and verify this during every install.
+
+---
+
+## 14. Next Steps
 
 1. ~~Spec review~~ — **done, v1.0 approved.**
-2. Write the **recipe/prompt document** (the installer artifact) per §8 — **next task.**
-3. Scaffold the `salesflow-lite` repo per this spec (schema definitions, config templates, cron job definitions, AgentMail integration stub).
+2. ~~Write the recipe/prompt document~~ — **done, now being updated for §12's credential-security instruction requirement.**
+3. Scaffold the `salesflow-lite` repo per this spec (schema definitions, config templates, cron job definitions, AgentMail integration stub) — **done for initial scaffold; needs updates for `Comms_Threads` types and Drive/Docs client stub.**
 4. Once Rick has Google Cloud credentials: provision service account, stand up the San Antonio print shop reference instance, pin down radius + target business types at that point.
 5. Local build validation using the reference instance as the dogfood test of the recipe itself.

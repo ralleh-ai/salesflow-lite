@@ -9,11 +9,11 @@ import "dotenv/config";
 export interface EnvConfig {
   googleServiceAccountKeyPath: string;
   googleSheetsSpreadsheetId: string;
-  googleCloudProjectId?: string;
+  googleCloudProjectId?: string | undefined;
   agentMailApiKey: string;
-  agentMailInboxId?: string;
+  agentMailInboxId?: string | undefined;
   notificationChannel: "telegram" | "email" | "none";
-  notificationTarget?: string;
+  notificationTarget?: string | undefined;
   nodeEnv: "development" | "production" | "test";
   logLevel: "debug" | "info" | "warn" | "error";
 }
@@ -35,7 +35,8 @@ export function loadEnvConfig(): EnvConfig {
     googleCloudProjectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
     agentMailApiKey: requireEnv("AGENTMAIL_API_KEY"),
     agentMailInboxId: process.env.AGENTMAIL_INBOX_ID,
-    notificationChannel: (process.env.NOTIFICATION_CHANNEL as EnvConfig["notificationChannel"]) ?? "none",
+    notificationChannel:
+      (process.env.NOTIFICATION_CHANNEL as EnvConfig["notificationChannel"]) ?? "none",
     notificationTarget: process.env.NOTIFICATION_TARGET,
     nodeEnv: (process.env.NODE_ENV as EnvConfig["nodeEnv"]) ?? "development",
     logLevel: (process.env.LOG_LEVEL as EnvConfig["logLevel"]) ?? "info"

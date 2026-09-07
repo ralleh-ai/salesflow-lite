@@ -22,7 +22,10 @@ export interface SheetsClient {
   getCategoriesReference(): Promise<unknown[]>;
 }
 
-export function createSheetsClient(_spreadsheetId: string, _serviceAccountKeyPath: string): SheetsClient {
+export function createSheetsClient(
+  _spreadsheetId: string,
+  _serviceAccountKeyPath: string
+): SheetsClient {
   throw new Error(
     "createSheetsClient is not yet implemented. See docs/SPEC.md §3 and docs/RECIPE.md §2.1 before implementing."
   );

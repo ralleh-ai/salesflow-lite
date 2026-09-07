@@ -19,9 +19,11 @@ export type PipelineStage =
   | "lost"
   | "nurture";
 
-export type LostReason = "no_budget" | "not_interested" | "unreachable" | "wrong_fit" | (string & {});
+export type LostReason =
+  "no_budget" | "not_interested" | "unreachable" | "wrong_fit" | (string & {});
 
-export type HistoryActor = "discovery_cron" | "research_cron" | "pipeline_cron" | "operator" | "system";
+export type HistoryActor =
+  "discovery_cron" | "research_cron" | "pipeline_cron" | "operator" | "system";
 
 export type HistoryEventType =
   | "discovered"
@@ -30,6 +32,11 @@ export type HistoryEventType =
   | "notification_sent"
   | "outreach_draft_created"
   | "manual_edit";
+
+export type CommsChannel = "email" | "call" | "sms" | "in_person" | "other";
+export type CommsDirection = "outbound" | "inbound";
+export type CommsLoggedBy = "pipeline_cron" | "operator" | "system";
+export type CommsSentiment = "positive" | "neutral" | "negative" | "unclear";
 
 /** One row in the `Leads` tab. See docs/SPEC.md §3.1 for authoritative field semantics. */
 export interface Lead {
@@ -87,4 +94,27 @@ export interface CategoryReference {
   productCategory: string;
   typicalBusinessTypes: string[];
   pitchNotes: string;
+}
+
+/** One row in the `Comms_Threads` tab (append-only, per-lead conversation history). See docs/SPEC.md §3.6. */
+export interface CommsThreadEvent {
+  threadEventId: string;
+  leadId: string;
+  channel: CommsChannel;
+  direction: CommsDirection;
+  timestamp: string;
+  subject?: string;
+  summary: string;
+  bodyRef?: string;
+  externalThreadId?: string;
+  loggedBy: CommsLoggedBy;
+  sentiment?: CommsSentiment;
+}
+
+/** One entry in the `Config` tab's Template & Collateral Map. See docs/SPEC.md §3.7. */
+export interface CollateralMapping {
+  productFitCategory?: string;
+  collateralName: string;
+  driveFileId: string;
+  attachToStage?: PipelineStage[];
 }
