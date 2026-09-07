@@ -2,6 +2,7 @@ import js from "@eslint/js";
 import tsPlugin from "@typescript-eslint/eslint-plugin";
 import tsParser from "@typescript-eslint/parser";
 import prettierConfig from "eslint-config-prettier";
+import globals from "globals";
 
 export default [
   js.configs.recommended,
@@ -12,6 +13,9 @@ export default [
       parserOptions: {
         project: "./tsconfig.json",
         sourceType: "module"
+      },
+      globals: {
+        ...globals.node
       }
     },
     plugins: {

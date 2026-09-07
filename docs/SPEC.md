@@ -72,9 +72,13 @@ One spreadsheet ("SalesFlow-Lite Workbook"), multiple tabs. Google Sheets API v4
 | `next_action_type` | text | e.g. `send_intro_email`, `follow_up_call`, `none`. |
 | `owner` | text | Free text; supports multi-user/future team use. |
 | `source_query` | text | Which discovery search (category+area+date) produced this row. |
+| `source` | enum | `discovery` \| `manual` \| `import` — see §4.1. Distinguishes Places-sourced leads from operator-entered ones. |
 | `discovered_at` | datetime | First seen. |
 | `last_touched_at` | datetime | Last write of any kind. |
 | `notes` | text | Free-form operator notes. |
+| `dnc` | boolean | Do-not-contact flag, see §6.5. If true, no automated outreach draft is ever created for this lead regardless of pipeline stage. |
+| `snooze_until` | datetime (nullable) | Operator-set override, see §6.6. If set and in the future, pipeline cron skips this lead's auto follow-up entirely (but does not alter `pipeline_stage`) until the date passes. |
+| `dup_of_lead_id` | text (nullable) | FK to another `Leads` row, see §4.2. Set by the duplicate-detection check when this row is suspected to be a re-discovery of an existing lead under a different `place_id`. Not auto-merged — flagged for operator review. |
 
 ### 3.2 Tab: `History` (append-only log, one row per event)
 
@@ -174,12 +178,38 @@ Process per run:
 2. Call Google Places API (Nearby Search / Text Search) per area+type combination, paginated.
 3. For each result:
    - Dedupe on `place_id` against existing `Leads` rows.
-   - If new: create row with `research_status=pending`, `pipeline_stage=new`, fill in what Places already gives us (name, address, phone, website, category, lat/lng).
+   - If new: run the **duplicate/conflict check** (§4.2) before inserting.
+   - If new and not a suspected duplicate: create row with `research_status=pending`, `pipeline_stage=new`, `source=discovery`, fill in what Places already gives us (name, address, phone, website, category, lat/lng).
+   - If new but suspected duplicate: still create the row (no drops), but set `dup_of_lead_id` to the suspected match and log a `possible_duplicate` event to `History` — surfaced to the operator for manual review/merge decision, never auto-merged or auto-discarded.
    - Log `discovered` event to `History`.
 4. Respect configured daily API call budget (cost guard) — stop early and resume next run if hit.
 5. Track which area+type combos were swept and when, to rotate coverage instead of hammering the same query every run.
+6. **Rate-limit/backoff handling**: if Google returns a quota/rate-limit error (HTTP 429 or `OVER_QUERY_LIMIT`), back off with exponential delay (configurable base/max, default e.g. 1s→32s) and log a `rate_limited` event to `Errors`, not `History` (it's operational, not business data). If the daily budget would be exceeded by continuing, stop the run cleanly — do not retry into the budget ceiling. A run that ends early due to rate-limiting or budget exhaustion is not a failure state; it resumes next scheduled run.
 
 This loop **never** enriches beyond what Places returns inline — that's the research loop's job. Keeps discovery fast and cheap.
+
+### 4.1 Manual lead entry / import
+
+Not every lead comes from Places. Operators have referrals, trade-show contacts, or an existing client list. SalesFlow-Lite supports this without a code change:
+
+- An operator (or the installing agent, during onboarding) can add a row directly to `Leads` with `source=manual` (or `source=import` for a bulk paste/CSV-derived batch) and whatever fields they already know (name, phone, email, website — skip what's unknown).
+- `place_id` is optional for manual/import rows (it may not exist, e.g. a referral with no Google Business Profile) — dedupe for these rows falls back to the name+phone/name+zip fuzzy check in §4.2 rather than `place_id` matching.
+- `research_status` starts at `pending` as normal *unless* the operator already has enough info to skip research — in that case they may set `research_status=completed` directly and the research cron will leave it alone (it never re-researches a `completed` row). This is an explicit operator override, not an automated decision.
+- `pipeline_stage` starts at `new` as normal; the pipeline cron treats manual/import leads identically to discovery leads from that point forward. No special-casing downstream — `source` is metadata, not a different code path.
+- This keeps discovery "one more input channel" rather than "the only door in," which matters for real-world adoption — no small business runs 100% of its pipeline through automated discovery.
+
+### 4.2 Duplicate/conflict detection
+
+Google Place ID dedupe (existing, §4) only catches exact re-discovery of the same Places entry. It misses:
+- The same business appearing under a **different** Place ID (moved location, re-listed, franchise location vs. corporate listing).
+- A **manually-entered** lead that's actually the same business already discovered automatically.
+
+Before inserting any new row (from discovery or manual/import), run a lightweight fuzzy match against existing `Leads`:
+- **Primary signal**: normalized phone number match (strip formatting, compare last-10-digits for US numbers).
+- **Secondary signal**: normalized business name (lowercase, strip "LLC"/"Inc"/punctuation) + matching zip/postal code.
+- If either signal matches an existing row: do **not** silently merge or silently skip. Insert the new row as usual (no drops), set `dup_of_lead_id` to the matched row's `lead_id`, and log `possible_duplicate` to `History` with both lead ids in `detail`.
+- The operator resolves duplicates manually (e.g. mark one `lost` with reason `duplicate`, or ignore if it's a legitimately distinct franchise location) — this check is a **warning surface**, not an automated merge/delete, because auto-merging business records has a high cost when wrong (lost research, wrong pipeline stage inherited) and a fuzzy match is not proof of identity.
+- This check runs in the discovery loop's insert path (§4 step 3) and in the manual/import path (§4.1) — same function, same rules, no special-casing by source.
 
 ---
 
@@ -241,6 +271,15 @@ new
 - A lead can only reach `lost` through an explicit reason; the cron itself won't invent one — if a lead times out repeatedly with no reason available, it goes to `nurture`, not `lost`. This enforces the "no drops" requirement structurally.
 - All stage transitions, whether cron-driven or operator-driven, log to `History`.
 
+### 6.2a Manual snooze override
+
+Operators need to say "I've got this, don't auto-follow-up for a while" on a specific lead without touching the state machine's `next_action_at` bookkeeping (which the pipeline cron owns) or faking a stage change.
+
+- The `snooze_until` column (§3.1) is the **only** column on `Leads` an operator sets directly to influence pipeline cron behavior (everything else pipeline-related is cron-owned).
+- Each pipeline cron run: for any lead with `snooze_until` set and in the future, **skip** the normal follow-up/auto-advance logic for that lead entirely this run — `pipeline_stage` and `next_action_at` are left untouched. Log a `snoozed_skip` event to `History` (not `Errors` — this is expected, operator-directed behavior) so the audit trail shows why a lead didn't move.
+- Once `snooze_until` passes, the lead re-enters normal pipeline cron processing on the next run — no special "resume" step needed, no field to clear (a past `snooze_until` is simply inert).
+- This is deliberately dumb/simple: one nullable datetime column, one skip check, one log line. No new pipeline stage, no separate snooze queue/table.
+
 ### 6.3 Outreach actions (v1 scope) — AgentMail integration (Drafts-only)
 
 V1 uses [AgentMail](https://agentmail.to) — an API-first email provider built for AI agents (programmatic inbox creation, send/receive with threading, webhooks, Python/TS SDKs, MCP server available) — but **the app is only ever permitted to create drafts, never to send.** This is a hard safety rule, not a configurable option.
@@ -268,6 +307,29 @@ AgentMail is the default recommendation because it's purpose-built for agent-dri
 | **SendGrid / Postmark / Mailgun (transactional email APIs)** | Weak for drafts-only | These are built around *sending*, not drafting — most don't have a native "draft" concept at all. Using one here would require faking drafts (e.g. storing the composed email only in `Comms_Threads`/Sheets and never calling the provider until a human explicitly triggers a separate send step outside the API's normal flow). Only recommend this path if the operator already has a transactional-email relationship with one of these and doesn't want to add AgentMail/Gmail/Graph — treat as a fallback, not a preferred option. |
 
 Whichever provider is used, the codebase must isolate it behind the same `AgentMailClient`-shaped interface (`createDraft`, `listInboundMessages`) defined in `src/agentmail/client.ts`, so swapping providers doesn't ripple through `pipeline_cron` logic. The **drafts-only hard rule (§6.3, `SECURITY.md`) applies regardless of provider** — it is a project invariant, not an AgentMail-specific one.
+
+### 6.5 Do-not-contact / opt-out list
+
+A `DoNotContact` tab: `dnc_id`, `matched_field` (`phone`\|`email`\|`domain`\|`business_name`), `matched_value`, `reason` (`operator_added`\|`unsubscribe_request`\|`bounced_hard`\|`legal_request`), `added_at`, `added_by`.
+
+Rules:
+- Checked at **two** points, both mandatory: (1) discovery insert path (§4) — a newly-discovered business matching an entry here still gets a `Leads` row (no drops — the operator may want to see it exists) but is created with `dnc=true` and `pipeline_stage` frozen at `new` with no `next_action_type` ever assigned; (2) pipeline cron's draft-creation step (§6.3) — before calling the email provider's draft endpoint, re-check `dnc` on the lead (and re-check the `DoNotContact` list itself, in case it was added after the lead already existed) and refuse to create a draft if either check hits, logging `dnc_blocked` to `History` instead.
+- The `dnc` column on `Leads` (§3.1) is a cached/denormalized flag for fast checking; the `DoNotContact` tab is the source of truth an operator edits. A sync step (part of the pipeline cron's per-run pass, cheap since it's just a lookup) keeps `Leads.dnc` in sync with `DoNotContact` for any lead whose phone/email/domain/name matches an entry.
+- An operator adds to this list directly (unsubscribe request received via a reply, a legal request, or simply "stop contacting this one") — this is manual by design; the app never auto-adds to the DNC list on its own inference (e.g. a terse reply is not the same as an opt-out request).
+- This is deliberately a hard block, not a pipeline stage: a `dnc` lead can still be `won` manually if the operator has a different, legitimate relationship with them (e.g. they opted out of cold outreach but became a client through another channel) — DNC blocks *automated outreach specifically*, not the pipeline model generally.
+
+### 6.6 Basic reporting (`Dashboard` tab)
+
+A `Dashboard` tab, built entirely from Sheets-native formulas over `Leads`/`History`/`Comms_Threads` — **no new code, no new cron.** Populated once during install (§2.1 of RECIPE.md) and left for the operator/Sheets to keep live automatically (`QUERY`/`COUNTIF`/`SUMIFS` formulas recalculate on every edit).
+
+Minimum viable panels:
+- **Pipeline funnel**: count of leads per `pipeline_stage`, updated live.
+- **Leads per `product_fit_category`**: which categories are generating volume.
+- **Response rate**: count of leads that reached `engaged` divided by count that reached `outreach_attempted`, over a rolling window (e.g. last 30 days by `pipeline_stage_since`/`Comms_Threads` timestamps).
+- **Drafts pending review**: count of `Comms_Threads` `outbound` rows with no corresponding `inbound` reply and no operator-logged "sent" confirmation — i.e. things sitting in the provider's draft folder the operator hasn't acted on yet. (This is a proxy, not a perfect signal, since the app can't observe the manual send — documented as a known limitation on the tab itself via a cell comment.)
+- **Guardrail usage today**: today's Places/LLM/scrape/draft counts vs. the configured daily maximums (§9.1) — gives the operator an at-a-glance sense of whether they're near a ceiling.
+
+This tab is optional to keep updated by the operator (it's just formulas, nothing writes to it programmatically) but is created and pre-populated during install so day one already has a working view, not an empty tab the operator has to build themselves.
 
 ---
 
@@ -314,6 +376,15 @@ All of the following live in the `Config` tab and are operator-tunable per insta
 
 All values configurable without redeploying — edit `Config` tab, cron reads fresh each run.
 
+### 9.2 Backup / versioning safety net
+
+Google Sheets has built-in version history (File > Version history), which covers accidental single-cell edits, but does not protect against an application-level bug (e.g. a bad cron write that mass-updates hundreds of rows before anyone notices) as cheaply as a point-in-time export does.
+
+- **Weekly export**: a lightweight scheduled job (can piggyback on the pipeline cron's schedule or run as its own low-frequency cron — implementation detail) exports each tab to CSV and saves it into a dated subfolder in the install's Drive folder (§3.7) or a dedicated `Backups` Drive folder, e.g. `backups/2026-09-07/Leads.csv`.
+- This is intentionally **not** a restore mechanism the app implements automatically — restoring from a CSV snapshot is a manual, deliberate operator action (copy data back in, or ask the installing agent to help), so a bad restore can't itself become a silent-drop or silent-overwrite risk.
+- Retention: keep the last N snapshots (config, default 8 — roughly 2 months at weekly cadence) and let older ones age out, so Drive storage doesn't grow unbounded.
+- This is cheap insurance, not a full backup/DR story — acceptable for v1 given Sheets' own version history already covers most day-to-day accidental-edit cases.
+
 ---
 
 ## 10. Decisions Locked (2026-09-07)
@@ -349,10 +420,34 @@ Applies to every install, every provider choice (AgentMail, Gmail, Graph, etc.) 
 
 ---
 
-## 14. Next Steps
+## 15. Decisions Locked (2026-09-07, third round — MVP hardening features)
+
+All seven of the following were proposed and approved in the same round; two additional ideas were added by the assistant as part of the same review:
+
+10. **Duplicate/conflict detection**: added §4.2 — fuzzy match (phone, then name+zip) on every discovery/manual insert; suspected duplicates are flagged via `dup_of_lead_id` and a `possible_duplicate` History event, never auto-merged or auto-dropped.
+11. **Manual lead entry / import**: added §4.1 — `source` column (`discovery`\|`manual`\|`import`) on `Leads`; manual/import rows flow through the identical pipeline from `new` onward, no special-casing downstream.
+12. **Basic reporting**: added §6.6 — a formula-only `Dashboard` tab (funnel counts, category volume, response rate, pending-drafts proxy, guardrail usage today), pre-populated at install, no new code or cron.
+13. **Do-not-contact / opt-out list**: added §6.5 — a `DoNotContact` tab as source of truth, a cached `dnc` column on `Leads` for fast checks, checked at both discovery-insert and pre-draft-creation time. Manual-add only; the app never infers an opt-out.
+14. **Backup/versioning safety net**: added §9.2 — weekly CSV export per tab to a dated Drive subfolder, retained N snapshots (default 8), manual-restore-only (no automated restore path, to avoid a new silent-overwrite risk).
+15. **Rate-limit/backoff hardening**: added to §4 step 6 — exponential backoff on Google API 429/`OVER_QUERY_LIMIT`, logged to `Errors` (not `History`), clean early-stop on budget exhaustion rather than retrying into the ceiling.
+16. **Manual snooze override**: added §6.2a — a single `snooze_until` column; pipeline cron skips (not alters) a snoozed lead's auto-follow-up logic until the date passes, logged as `snoozed_skip` (expected, not an error).
+17. **New idea (assistant-proposed, approved with the rest): DNC/`Dashboard`/backup are Sheets-and-Drive-native** — explicitly re-confirmed as a design constraint while adding these: none of items 10–16 introduce a new database, a new external service, or a new cron job beyond the existing three (backup piggybacks on an existing schedule; Dashboard is pure formulas). This keeps the "golden standard, still simple" framing the operator asked for — seven new capabilities, zero new infrastructure surface.
+18. **New idea (assistant-proposed, approved with the rest): `Leads` schema additions are additive-only.** `source`, `dnc`, `snooze_until`, `dup_of_lead_id` are all new nullable/defaulted columns appended to the existing schema (§3.1) — no existing column was renamed, retyped, or removed, so this round of features requires no migration story for anyone who had already stood up a workbook from v1.0's schema (in practice: no one has yet, since the reference instance is still blocked on Google Cloud credentials, but the principle holds going forward).
+
+---
+
+## 16. Code Review (2026-09-07)
+
+A full review of the initial scaffold's stub code (`src/`) against this spec, written in the style of a blunt, no-sacred-cows senior engineering review. See `docs/CODE_REVIEW.md` for the complete findings, severity ratings, and the specific fixes applied as a result. Summary of what changed as a direct result of the review is logged there and cross-referenced from `CHANGELOG.md`.
+
+---
+
+## 17. Next Steps
 
 1. ~~Spec review~~ — **done, v1.0 approved.**
-2. ~~Write the recipe/prompt document~~ — **done, now being updated for §12's credential-security instruction requirement.**
-3. Scaffold the `salesflow-lite` repo per this spec (schema definitions, config templates, cron job definitions, AgentMail integration stub) — **done for initial scaffold; needs updates for `Comms_Threads` types and Drive/Docs client stub.**
-4. Once Rick has Google Cloud credentials: provision service account, stand up the San Antonio print shop reference instance, pin down radius + target business types at that point.
-5. Local build validation using the reference instance as the dogfood test of the recipe itself.
+2. ~~Write the recipe/prompt document~~ — **done, updated through three rounds of additions.**
+3. ~~Scaffold the `salesflow-lite` repo~~ — **done; updated for `Comms_Threads`/collateral types, provider-agnostic email client, and this round's schema additions (`source`, `dnc`, `snooze_until`, `dup_of_lead_id`).**
+4. ~~Code review of the scaffold~~ — **done, see §16 / `docs/CODE_REVIEW.md`.**
+5. Once Rick has Google Cloud credentials: provision service account, stand up the San Antonio print shop reference instance, pin down radius + target business types at that point.
+6. Implement the stub modules for real per their embedded spec references, including this round's additions (duplicate check, DNC check, snooze skip, backup export, Dashboard formulas).
+7. Local build validation using the reference instance as the dogfood test of the recipe itself.

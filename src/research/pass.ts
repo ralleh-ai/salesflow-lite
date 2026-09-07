@@ -16,8 +16,19 @@
  *      research_status=failed_permanent with a reason — never delete, never
  *      silently drop (see docs/SPEC.md "no drops" principle).
  *   8. Log research_updated events to History with what changed.
+ *
+ * This loop never mutates dnc, snoozeUntil, or dupOfLeadId — those are
+ * discovery/pipeline/operator-owned fields respectively (SPEC §3.1).
  */
+import type { Lead } from "../types/domain.js";
 
 export async function runResearchPass(): Promise<void> {
   throw new Error("runResearchPass is not yet implemented. See docs/SPEC.md §5.");
+}
+
+/** Recomputes the 0–100 research completeness score per the weights in SPEC.md §5.2. Pure function, no I/O, so it's independently testable. */
+export function computeResearchScore(
+  _lead: Pick<Lead, "website" | "email" | "phone" | "socials" | "productFitConfidence">
+): number {
+  throw new Error("computeResearchScore is not yet implemented. See docs/SPEC.md §5.2.");
 }

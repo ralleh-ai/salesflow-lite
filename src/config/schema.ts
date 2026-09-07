@@ -2,7 +2,8 @@
  * SalesFlow-Lite — install configuration schema.
  * Validated with zod at startup so a misconfigured Config tab or .env fails
  * loudly and early rather than silently misbehaving mid-cron-run.
- * Mirrors docs/SPEC.md §3.3 (Config tab) and §9.1 (cost guardrails).
+ * Mirrors docs/SPEC.md §3.3 (Config tab), §9.1 (cost guardrails), and
+ * §9.2 (backup retention).
  */
 import { z } from "zod";
 
@@ -13,7 +14,8 @@ export const GuardrailsSchema = z.object({
   maxAgentMailDraftsPerDay: z.number().int().positive().default(25),
   discoveryCronIntervalMinutes: z.number().int().positive().default(240),
   researchCronIntervalMinutes: z.number().int().positive().default(20),
-  pipelineCronIntervalMinutes: z.number().int().positive().default(30)
+  pipelineCronIntervalMinutes: z.number().int().positive().default(30),
+  backupRetentionSnapshots: z.number().int().positive().default(8)
 });
 export type Guardrails = z.infer<typeof GuardrailsSchema>;
 
@@ -32,6 +34,14 @@ export const NotificationRouteSchema = z.object({
 });
 export type NotificationRoute = z.infer<typeof NotificationRouteSchema>;
 
+export const CollateralMappingSchema = z.object({
+  productFitCategory: z.string().optional(),
+  collateralName: z.string(),
+  driveFileId: z.string(),
+  attachToStage: z.array(z.string()).optional()
+});
+export type CollateralMappingConfig = z.infer<typeof CollateralMappingSchema>;
+
 export const AppConfigSchema = z.object({
   businessName: z.string(),
   businessDescription: z.string(),
@@ -41,6 +51,7 @@ export const AppConfigSchema = z.object({
   maxResearchAttempts: z.number().int().positive().default(3),
   guardrails: GuardrailsSchema.default({}),
   notifications: z.array(NotificationRouteSchema).default([]),
+  templateCollateralMap: z.array(CollateralMappingSchema).default([]),
   quietHours: z
     .object({
       startHourLocal: z.number().int().min(0).max(23),

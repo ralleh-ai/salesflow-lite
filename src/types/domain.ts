@@ -38,6 +38,11 @@ export type CommsDirection = "outbound" | "inbound";
 export type CommsLoggedBy = "pipeline_cron" | "operator" | "system";
 export type CommsSentiment = "positive" | "neutral" | "negative" | "unclear";
 
+export type LeadSource = "discovery" | "manual" | "import";
+
+export type DncMatchedField = "phone" | "email" | "domain" | "business_name";
+export type DncReason = "operator_added" | "unsubscribe_request" | "bounced_hard" | "legal_request";
+
 /** One row in the `Leads` tab. See docs/SPEC.md §3.1 for authoritative field semantics. */
 export interface Lead {
   leadId: string;
@@ -62,9 +67,16 @@ export interface Lead {
   nextActionType?: string;
   owner?: string;
   sourceQuery: string;
+  source: LeadSource;
   discoveredAt: string;
   lastTouchedAt: string;
   notes?: string;
+  /** Do-not-contact flag, cached from the `DoNotContact` tab. See docs/SPEC.md §6.5. */
+  dnc: boolean;
+  /** Operator-set follow-up suppression override. See docs/SPEC.md §6.2a. */
+  snoozeUntil?: string;
+  /** Set by duplicate detection when this row is a suspected re-discovery of another lead. See docs/SPEC.md §4.2. Never auto-merged. */
+  dupOfLeadId?: string;
 }
 
 /** One row in the `History` tab (append-only). See docs/SPEC.md §3.2. */
@@ -117,4 +129,14 @@ export interface CollateralMapping {
   collateralName: string;
   driveFileId: string;
   attachToStage?: PipelineStage[];
+}
+
+/** One row in the `DoNotContact` tab (source of truth for the `dnc` flag on `Leads`). See docs/SPEC.md §6.5. */
+export interface DoNotContactEntry {
+  dncId: string;
+  matchedField: DncMatchedField;
+  matchedValue: string;
+  reason: DncReason;
+  addedAt: string;
+  addedBy: string;
 }
