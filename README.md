@@ -195,13 +195,6 @@ Standing up a real instance for an operator follows
 [`docs/RECIPE.md`](./docs/RECIPE.md) end to end — onboarding questionnaire,
 provisioning, dry run, and a post-install verification checklist.
 
-## Relationship to `sales-channel-manager` ("SalesFlow")
-
-This is a separate, independent project. An earlier, heavier-weight spec
-(Postgres + n8n + VAPI) exists under `sales-channel-manager` in this
-workspace but is paused/superseded for the small-business use case. No code
-or data is shared between the two. See `docs/SPEC.md` §0 for the full note.
-
 ## License
 
 MIT — see [`LICENSE`](./LICENSE).
