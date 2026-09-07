@@ -21,9 +21,8 @@ export type Guardrails = z.infer<typeof GuardrailsSchema>;
 
 export const GeographySchema = z.object({
   label: z.string(),
-  lat: z.number(),
-  lng: z.number(),
-  radiusMeters: z.number().int().positive()
+  /** US ZIP/postal code used as the discovery search anchor. Radius is a fixed operational default (see docs/SPEC.md §3.3), not operator-tunable per geography, to keep discovery cost predictable across installs. */
+  zipCode: z.string().regex(/^\d{5}(-\d{4})?$/, "Expected a 5-digit (or ZIP+4) US ZIP code")
 });
 export type Geography = z.infer<typeof GeographySchema>;
 
@@ -154,7 +153,7 @@ export type CollateralMappingConfig = z.infer<typeof CollateralMappingSchema>;
 export const AppConfigSchema = z.object({
   businessName: z.string(),
   businessDescription: z.string(),
-  targetBusinessTypes: z.array(z.string()).min(1),
+  /** Product/service catalog + target business categories now live in a local `categories.md` file (see docs/SPEC.md §3.4), not this field — kept only as an optional operator-facing label override for the Config tab's summary display. */
   geographies: z.array(GeographySchema).min(1),
   researchCompletionThreshold: z.number().min(0).max(100).default(70),
   maxResearchAttempts: z.number().int().positive().default(3),

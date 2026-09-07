@@ -121,19 +121,13 @@ export const requiredEnvVarsCheck: Check = {
       };
     }
 
-    const provider = merged.EMAIL_PROVIDER ?? "agentmail";
-    const providerVar =
-      provider === "gmail"
-        ? "GMAIL_OAUTH_CREDENTIALS_PATH"
-        : provider === "graph"
-          ? "GRAPH_CLIENT_CREDENTIALS_PATH"
-          : "AGENTMAIL_API_KEY";
-    if (!merged[providerVar]) {
+    if (!merged.AGENTMAIL_API_KEY) {
       return {
         id: "required-env-vars",
         label: "required environment variables set",
         status: "fail",
-        detail: `EMAIL_PROVIDER=${provider} but ${providerVar} is not set. See src/config/env.ts.`,
+        detail:
+          "AGENTMAIL_API_KEY is not set. AgentMail is the sole supported email provider. See src/config/env.ts.",
         fixable: false
       };
     }
@@ -141,7 +135,7 @@ export const requiredEnvVarsCheck: Check = {
       id: "required-env-vars",
       label: "required environment variables set",
       status: "pass",
-      detail: `All required variables present for EMAIL_PROVIDER=${provider}.`
+      detail: "All required variables present."
     };
   }
 };

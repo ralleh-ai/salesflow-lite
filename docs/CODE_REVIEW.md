@@ -14,6 +14,8 @@ We spent an entire round of spec work (SPEC §6.4) establishing that AgentMail i
 
 **Fix applied**: `env.ts` now reads an `EMAIL_PROVIDER` variable (`agentmail` | `gmail` | `graph`, default `agentmail`) and only requires the credential that provider actually needs (`AGENTMAIL_API_KEY`, `GMAIL_OAUTH_CREDENTIALS_PATH`, or `GRAPH_CLIENT_CREDENTIALS_PATH` respectively). `.env.example` needs a follow-up pass to document the new variable set (tracked below).
 
+**Update (2026-09-07, Rick's decision):** AgentMail was subsequently locked in as the sole supported email provider. `env.ts` now requires `AGENTMAIL_API_KEY` unconditionally again — this is intentional, not a regression of this finding; the provider-agnostic `EmailDraftClient` interface is retained in case a future alternative provider is added, but the multi-provider env-selection logic this finding fixed has been simplified away along with it.
+
 ### 2. `src/config/env.ts` — unchecked `as` casts on every enum-like env var (Severity: **Medium** — defeats the module's own stated purpose)
 
 The module's header comment says config should "fail loudly and early rather than silently misbehaving mid-cron-run." The implementation did the opposite: `(process.env.NOTIFICATION_CHANNEL as EnvConfig["notificationChannel"]) ?? "none"` accepts *any* string and blindly casts it. Set `NOTIFICATION_CHANNEL=telegrm` (typo) in `.env` and the app boots fine, then does nothing useful the first time a notification tries to fire three hours into a cron run — exactly the failure mode the comment claims to prevent.
@@ -54,7 +56,7 @@ SPEC.md repeatedly states hard invariants — "pipeline_cron is the only writer 
 
 ## Known Gaps (not fixed in this pass, tracked deliberately)
 
-- **`.env.example` needs updating** for the new `EMAIL_PROVIDER`, `GMAIL_OAUTH_CREDENTIALS_PATH`, `GRAPH_CLIENT_CREDENTIALS_PATH` variables introduced by fix #1. Trivial but not yet done as of this review — do before the first real Gmail/Graph install.
+- ~~`.env.example` needs updating for the new `EMAIL_PROVIDER`, `GMAIL_OAUTH_CREDENTIALS_PATH`, `GRAPH_CLIENT_CREDENTIALS_PATH` variables~~ — moot as of 2026-09-07: AgentMail was locked in as the sole supported email provider, so these multi-provider variables were never added to `.env.example` in the end.
 - **Invariant enforcement (finding #6)** — worth a real design pass (likely a lightweight custom lint rule or a branded/opaque type for `pipelineStage` writes) once there's a second real contributor to police, rather than solved unilaterally here.
 - **`AgentMailClient` deprecated alias** in `src/agentmail/client.ts` is a compatibility shim from the mid-project rename to `EmailDraftClient` — fine to keep short-term, but should be deleted once nothing in the codebase or its history depends on the old name (nothing currently does; it can be removed any time).
 - This review did not re-audit `docs/` prose for accuracy beyond what changed in this same session — a full documentation-vs-code drift audit is worth doing again once the real Sheets/Places implementation lands, since that's when stub signatures will actually get exercised and any remaining mismatch will surface.

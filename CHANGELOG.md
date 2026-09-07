@@ -5,6 +5,38 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Changed (2026-09-07, Rick's decisions)
+- **Credentials confirmed as environment variables** — no change needed;
+  this was already the design (`src/config/env.ts` reads exclusively from
+  process env / `.env`, never Sheets/Docs/chat per SPEC §12).
+- **AgentMail locked in as the sole supported email provider.** Removed the
+  Gmail API / Microsoft Graph provider-selection logic from
+  `src/config/env.ts` (`EMAIL_PROVIDER` env var, `parseEnum` branch) —
+  `AGENTMAIL_API_KEY` is unconditionally required again. The
+  provider-agnostic `EmailDraftClient` interface is retained for future
+  extensibility, but no second provider is implemented or planned right
+  now. Doctor's `required-env-vars` check simplified to match.
+- **Geography switched from lat/lng + radius to ZIP-code based.**
+  `GeographySchema` (`src/config/schema.ts`) now takes a single US ZIP code
+  per configured search area; the Places API search radius is a fixed
+  operational default (documented in `src/discovery/sweep.ts`), not
+  per-geography-tunable, keeping discovery cost predictable across every
+  install. Broader coverage = add more ZIP codes, not widen a radius.
+  SPEC.md §3.3/§3.4a, RECIPE.md §1/§2.1/§4 updated to match.
+- **Target categories/product-fit catalog moved out of Sheets entirely**,
+  into a new local, version-controlled `categories.md` file at the repo
+  root (replaces the `Categories_Reference` Sheets tab design). Rationale:
+  category definitions are a one-time business-configuration decision, not
+  row-churn data — a markdown file is easier to review/diff/hand off
+  between operator and installing agent, and keeps this LLM-prompt
+  grounding data out of the live spreadsheet. `AppConfigSchema` no longer
+  has a `targetBusinessTypes` field. SPEC.md §3.4 rewritten, RECIPE.md
+  onboarding/provisioning/checklist sections updated, `docs/CODE_REVIEW.md`
+  finding #1 annotated with this supersession.
+- Wired `TokenBudgetConfigSchema` into `AppConfigSchema` as the optional
+  `tokenBudget` field (was defined but not yet attached in the prior
+  commit).
+
 ### Added
 - Initial repository scaffold: TypeScript project structure, ESLint/Prettier,
   Vitest, CI workflow, issue/PR templates.

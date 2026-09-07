@@ -98,9 +98,8 @@ This tab is the audit trail. Nothing overwrites it; it only grows. (Sheets doesn
 ### 3.3 Tab: `Config`
 
 Key/value + structured sub-tables in one tab, sectioned by header rows. Holds:
-- **Business profile**: operator name, product/service catalog (list of `category_name`, `trigger_business_types`, `pitch_blurb`).
-- **Geography**: list of search areas (lat/lng + radius, or place names to geocode).
-- **Target business types**: Google Places types/keywords to search per sweep.
+- **Business profile**: operator name, product/service catalog (list of `category_name`, `trigger_business_types`, `pitch_blurb`) — lives in the local `categories.md` file (see §3.4), not this tab.
+- **Geography**: list of search areas, each a US ZIP code (see §3.4a). Radius is a fixed operational default, not per-geography-tunable, to keep discovery cost predictable across installs.
 - **Discovery cadence**: cron interval, max new leads per run, max Places API calls per day (cost guard).
 - **Research cadence**: cron interval, max leads processed per run, backoff rules.
 - **Scoring thresholds**: research completeness score required to mark `completed`.
@@ -110,14 +109,33 @@ Key/value + structured sub-tables in one tab, sectioned by header rows. Holds:
 
 Config is human-editable directly in Sheets; the app re-reads it each cron run (no restart needed for most changes).
 
-### 3.4 Tab: `Categories_Reference` (optional, supports product-fit logic)
+### 3.4 Local file: `categories.md` (target categories & product fit)
 
-Seed mapping table so the LLM categorizer has a grounded reference, editable by operator:
+**Decision (2026-09-07, Rick):** target business categories and product/service
+catalog live in a local, version-controlled `categories.md` file at the repo
+root — not a `Categories_Reference` Sheets tab. Rationale: category
+definitions are a one-time (or rarely-touched) business-configuration
+decision, not row-churn data; a markdown file is easier to review/diff/hand
+off between operator and installing agent, and keeps this LLM-prompt
+grounding data out of the live spreadsheet entirely. One `##` heading per
+product category, each with a `typical business types` list and `pitch
+notes` paragraph — see the file itself (`categories.md`) for the exact
+format and the San Antonio print-shop reference entries.
 
-| `product_category` | `typical_business_types` | `pitch_notes` |
-|---|---|---|
-| `banners` | schools, gyms, construction, events | "Exterior banners for enrollment pushes, grand openings, sales events" |
-| `menus_signage` | restaurants, cafes | "Laminated menus, window decals, sandwich boards" |
+The research cron reads this file once per run and passes its content into
+the LLM categorization prompt alongside each lead's scraped business
+description, producing `product_fit_category`, `product_fit_confidence`,
+and `product_fit_rationale` on the `Leads` tab.
+
+### 3.4a Geography: ZIP-code based
+
+**Decision (2026-09-07, Rick):** each configured geography is a single US
+ZIP code, not a lat/lng + custom radius pair. The Places API search radius
+for a ZIP-anchored search is a fixed operational default (documented in
+`src/discovery/sweep.ts`), so discovery cost stays predictable across every
+install regardless of how an operator describes their service area. An
+operator wanting broader coverage adds more ZIP codes to the list rather
+than widening one radius.
 | ... | ... | ... |
 
 This is print-shop-flavored by default but fully replaceable per install — this is the primary "make it generic" lever.
