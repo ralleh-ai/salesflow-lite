@@ -31,10 +31,33 @@ rules) that makes "Sheets as database" actually reliable instead of a mess.
 ## Core safety rule: Drafts only
 
 SalesFlow-Lite **never sends email automatically.** All outreach is created
-as a draft (via the [AgentMail](https://agentmail.to) API) for the operator
-to review and send manually. This is a hard, non-configurable rule — see
+as a draft (via [AgentMail](https://agentmail.to) or an alternative provider,
+see [`docs/SPEC.md` §6.4](./docs/SPEC.md#64-email-provider-options-if-not-using-agentmail))
+for the operator to review and send manually. This is a hard, non-configurable
+rule, enforced by a provider-agnostic `EmailDraftClient` interface — see
 [`docs/SPEC.md` §6.3](./docs/SPEC.md#63-outreach-actions-v1-scope--agentmail-integration-drafts-only)
 and [`SECURITY.md`](./SECURITY.md).
+
+## Diagnose and repair an install: `npm run doctor`
+
+Every install accumulates ways to drift out of a healthy state — a missing
+`.env`, an overly-permissive credential file, a `.gitignore` that no longer
+covers secrets, guardrail values that can't actually be satisfied by the
+configured cron cadence. Rather than debugging that by hand, run:
+
+```bash
+npm run doctor        # read-only diagnostic report
+npm run doctor:fix     # same report, then applies safe/mechanical repairs
+```
+
+`doctor` checks (and `--fix` can repair): presence of `.env`, required
+environment variables for the configured email provider, service account key
+validity/permissions, `.gitignore` secret coverage, and a best-effort scan for
+leaked credentials in tracked docs. It deliberately never invents credentials,
+never deletes data, and never guesses at business config — those stay the
+operator's/agent's call, per `docs/RECIPE.md` §0. See
+[`src/doctor/checks.ts`](./src/doctor/checks.ts) for the full, growing list of
+checks and the ground rules for adding new ones.
 
 ## Documentation
 

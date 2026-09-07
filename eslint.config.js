@@ -28,5 +28,30 @@ export default [
       "no-console": ["warn", { allow: ["warn", "error"] }]
     }
   },
+  {
+    // CLI entrypoint: console output is the entire point, and it's a thin
+    // rendering layer intentionally kept out of tsconfig's strict project
+    // scope for src/ — see bin/doctor.ts header comment.
+    files: ["bin/**/*.ts"],
+    languageOptions: {
+      parser: tsParser,
+      parserOptions: {
+        project: "./tsconfig.json",
+        sourceType: "module"
+      },
+      globals: {
+        ...globals.node
+      }
+    },
+    plugins: {
+      "@typescript-eslint": tsPlugin
+    },
+    rules: {
+      ...tsPlugin.configs.recommended.rules,
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+      "@typescript-eslint/explicit-function-return-type": "off",
+      "no-console": "off"
+    }
+  },
   prettierConfig
 ];

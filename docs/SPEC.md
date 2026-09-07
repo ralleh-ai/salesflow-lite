@@ -442,12 +442,25 @@ A full review of the initial scaffold's stub code (`src/`) against this spec, wr
 
 ---
 
-## 17. Next Steps
+## 17. Diagnostic & repair tooling: `doctor` (2026-09-07)
+
+Added `npm run doctor` / `npm run doctor:fix` (`src/doctor/`, `bin/doctor.ts`) — a CLI that inspects a live install's health and, in `--fix` mode, applies a narrow set of safe mechanical repairs. This exists because an install has real ways to silently drift unhealthy between the questionnaire (RECIPE §1) and go-live (RECIPE §2.5), and "re-read the recipe by hand" is not an acceptable diagnostic method for a non-technical operator or a future agent picking up someone else's install.
+
+**What it checks**: `.env` presence, required environment variables for whichever email provider is configured (not just AgentMail — respects §6.4), Google service account key file validity/shape/permissions, `.gitignore` secret coverage (§12), and a best-effort static scan of tracked docs for obvious leaked-credential patterns. A pure, I/O-free `checkGuardrailSanity()` helper additionally catches a configuration class of bug that zod's field-level validation can't: individually-positive guardrail values that are nonetheless mutually inconsistent (e.g. a daily Places API budget lower than the number of discovery cron runs/day, which would starve every single run).
+
+**Hard rule carried over from RECIPE §0**: `doctor --fix` may only perform safe, mechanical, reversible repairs — tightening a credential file's permissions, appending a missing `.gitignore` pattern. It must never delete data, rotate/regenerate a credential, or guess at business configuration (target categories, geography, guardrail values) on the operator's behalf. Those stay explicit operator/agent decisions, exactly as RECIPE.md's "never invent" rule already requires elsewhere.
+
+RECIPE.md §2.5 (dry run) and §2.6 (credential security verification) should both open with `npm run doctor` going forward — it mechanizes checks that were previously manual-only checklist items, without replacing the parts of those checklists (business-logic verification, human judgment calls) that a script genuinely cannot do.
+
+---
+
+## 18. Next Steps
 
 1. ~~Spec review~~ — **done, v1.0 approved.**
 2. ~~Write the recipe/prompt document~~ — **done, updated through three rounds of additions.**
 3. ~~Scaffold the `salesflow-lite` repo~~ — **done; updated for `Comms_Threads`/collateral types, provider-agnostic email client, and this round's schema additions (`source`, `dnc`, `snooze_until`, `dup_of_lead_id`).**
 4. ~~Code review of the scaffold~~ — **done, see §16 / `docs/CODE_REVIEW.md`.**
-5. Once Rick has Google Cloud credentials: provision service account, stand up the San Antonio print shop reference instance, pin down radius + target business types at that point.
-6. Implement the stub modules for real per their embedded spec references, including this round's additions (duplicate check, DNC check, snooze skip, backup export, Dashboard formulas).
-7. Local build validation using the reference instance as the dogfood test of the recipe itself.
+5. ~~Doctor/diagnostic tooling~~ — **done, see §17 / `src/doctor/`.**
+6. Once Rick has Google Cloud credentials: provision service account, stand up the San Antonio print shop reference instance, pin down radius + target business types at that point.
+7. Implement the stub modules for real per their embedded spec references, including this round's additions (duplicate check, DNC check, snooze skip, backup export, Dashboard formulas).
+8. Local build validation using the reference instance as the dogfood test of the recipe itself.

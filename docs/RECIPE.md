@@ -97,12 +97,13 @@ Before enabling: check `cron action=list` to avoid duplicate jobs for the same o
 
 ### 2.5 Dry run
 Before leaving jobs enabled on their live schedule:
-1. Force-run each of the three jobs once (`cron action=run runMode=force`) in sequence: discovery → research → pipeline.
-2. Verify: new lead rows appeared in `Leads`, `History` got corresponding entries, no unexpected rows in `Errors`, a draft was created in the chosen email provider — not sent — and a matching `outbound` row appeared in `Comms_Threads` (if a lead reached that stage).
-3. Report results to the operator before considering the install "live."
+1. Run `npm run doctor` (or `npm run doctor:fix` if any repairable issue is flagged) and resolve every `fail` before proceeding — this mechanizes most of the credential/config hygiene checks below instead of doing them by hand.
+2. Force-run each of the three jobs once (`cron action=run runMode=force`) in sequence: discovery → research → pipeline.
+3. Verify: new lead rows appeared in `Leads`, `History` got corresponding entries, no unexpected rows in `Errors`, a draft was created in the chosen email provider — not sent — and a matching `outbound` row appeared in `Comms_Threads` (if a lead reached that stage).
+4. Report results to the operator before considering the install "live."
 
 ### 2.6 Credential security verification (mandatory, not optional)
-Per SPEC §12 — before considering any install complete:
+Per SPEC §12 — before considering any install complete. Start with `npm run doctor`, which automates checks 1–4 below (and can auto-repair a permissive key file or an incomplete `.gitignore` via `npm run doctor:fix`); still walk through all five by hand as the final sign-off, since a script cannot judge conversational leakage in check 2 on its own:
 1. Confirm every credential (Google service account key path, AgentMail/Gmail/Graph API key or OAuth token, any other secret) exists **only** in that install's `.env` (or OpenClaw-managed environment/config secret store) — nowhere else.
 2. Grep/scan the Sheets `Config` tab, any Docs/Drive files touched during setup, and the conversation/chat log used for onboarding to confirm no credential value was accidentally pasted or echoed anywhere outside `.env`.
 3. Confirm `.gitignore` (or equivalent) covers `.env` and any credential/key files for this install's working copy — do not assume the template repo's `.gitignore` was preserved if the install was created by copying files manually.
@@ -124,6 +125,7 @@ Per SPEC §12 — before considering any install complete:
 Report this checklist, filled in, back to the operator as the install completion summary:
 
 - [ ] Google Sheet created, all 6 tabs present with correct headers (`Leads`, `History`, `Config`, `Categories_Reference`, `Errors`, `Comms_Threads`)
+- [ ] `npm run doctor` reports HEALTHY (or all remaining warnings understood and accepted by the operator)
 - [ ] Service account has Editor access confirmed
 - [ ] Places API test call succeeded
 - [ ] Sheets API test call succeeded
