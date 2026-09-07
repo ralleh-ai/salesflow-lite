@@ -242,7 +242,7 @@ Before inserting any new row (from discovery or manual/import), run a lightweigh
    - Social links (footer/header link scan for known domains: facebook.com, instagram.com, linkedin.com, twitter.com/x.com, tiktok.com).
    - Business description text (for categorization input).
 2. If no website: attempt a web search for `"<business_name>" "<address/city>"` to find one; if still nothing, mark that sub-check as exhausted (not a failure — some businesses just don't have one).
-3. Run LLM categorization pass using: business name, Places category, scraped description, and the `Categories_Reference` catalog → produces `product_fit_category`, `product_fit_confidence`, `product_fit_rationale`.
+3. Run LLM categorization pass using: business name, Places category, scraped description, and the local `categories.md` catalog (§3.4) → produces `product_fit_category`, `product_fit_confidence`, `product_fit_rationale`.
 4. Recompute `research_score` (see 5.2).
 5. Update `Leads` row (fields only — never touch `pipeline_stage` from this loop).
 6. Log `research_updated` event to `History` with what changed.

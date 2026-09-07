@@ -54,7 +54,6 @@ const REQUIRED_SHEET_TABS = [
   "Leads",
   "History",
   "Config",
-  "Categories_Reference",
   "Errors",
   "Comms_Threads",
   "DoNotContact"

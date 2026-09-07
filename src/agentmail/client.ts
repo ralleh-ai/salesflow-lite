@@ -30,11 +30,21 @@ export interface DraftResult {
   threadId?: string;
 }
 
+/** One inbound message fetched for reply-matching against a lead's outreach thread (SPEC §6.3, logged to Comms_Threads per §3.6). Intentionally minimal/provider-agnostic — concrete clients map their provider's richer payload down to this shape. */
+export interface InboundMessage {
+  externalMessageId: string;
+  externalThreadId?: string;
+  fromEmail: string;
+  subject?: string;
+  bodyText: string;
+  receivedAtIso: string;
+}
+
 export interface EmailDraftClient {
   /** Creates a draft in the configured inbox/mailbox. NEVER sends. */
   createDraft(request: DraftRequest): Promise<DraftResult>;
   /** Fetches inbound replies for reply-matching against leads (SPEC §6.3, logged to Comms_Threads per §3.6). */
-  listInboundMessages(sinceIso: string): Promise<unknown[]>;
+  listInboundMessages(sinceIso: string): Promise<InboundMessage[]>;
 }
 
 /** @deprecated Provider-specific alias kept for backward compatibility with early stubs; use EmailDraftClient. */

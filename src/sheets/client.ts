@@ -9,7 +9,6 @@
  *   - Leads (read/update, never delete rows)
  *   - History (append-only — no update/delete calls permitted)
  *   - Config (read-only from the app's perspective; operator edits directly)
- *   - Categories_Reference (read-only from the app's perspective)
  *   - Errors (append-only)
  *   - Comms_Threads (append-only, see docs/SPEC.md §3.6)
  *   - DoNotContact (read-only from the app's perspective, see docs/SPEC.md §6.5)
@@ -21,7 +20,6 @@
  * lands and nobody notices a field was misspelled or a type mismatched.
  */
 import type {
-  CategoryReference,
   DoNotContactEntry,
   CommsThreadEvent,
   ErrorRecord,
@@ -41,7 +39,6 @@ export interface SheetsClient {
   /** Append-only — must never issue an update/delete call against the Comms_Threads tab (see docs/SPEC.md §3.6). */
   appendCommsThreadEvent(event: CommsThreadEvent): Promise<void>;
   getConfig(): Promise<AppConfig>;
-  getCategoriesReference(): Promise<CategoryReference[]>;
   /** Source of truth for the `dnc` flag on Leads (see docs/SPEC.md §6.5). */
   getDoNotContactList(): Promise<DoNotContactEntry[]>;
 }

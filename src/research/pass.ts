@@ -9,7 +9,7 @@
  *   1. Process leads with research_status in {pending, in_progress}, oldest first.
  *   2. Scrape website (home + contact/about) for email, phone, socials, description.
  *   3. If no website, attempt a web search to find one before giving up on that field.
- *   4. Run LLM categorization against Categories_Reference -> product_fit_*.
+ *   4. Run LLM categorization against the local categories.md catalog -> product_fit_*.
  *   5. Recompute research_score (see SPEC.md §5.2 weights).
  *   6. On score >= completion threshold: mark research_status=completed.
  *   7. On repeated failure to improve score past maxResearchAttempts: mark

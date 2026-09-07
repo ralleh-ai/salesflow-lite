@@ -72,3 +72,42 @@ All of the following were run clean after applying the fixes above:
 - `npm test` — 2/2 passing (guardrail defaults + validation).
 
 No behavior changed for the passing test (it only covers `GuardrailsSchema`, untouched in substance). No new tests were added in this pass because the fixes are type/contract-level on functions that still intentionally throw — real unit tests land with the real implementations of `computeResearchScore`, `checkForDuplicateLead`, and `shouldSkipAutoAdvance`.
+
+---
+
+## Round 2 (2026-09-07, post ZIP/categories.md/AgentMail-lock migration)
+
+Triggered by Rick's explicit request for an extensive review to confirm nothing was left half-migrated and that the codebase leverages current TypeScript conventions. Full re-read of every file under `src/`, `test/`, and `bin/`.
+
+### Findings
+
+**7. Stale `Categories_Reference`/`CategoryReference` residue left behind by the categories.md migration (Severity: Medium — real drift, not cosmetic).** When target categories moved from a `Categories_Reference` Sheets tab to the local `categories.md` file (Rick's decision, #3248), the migration missed several call sites that still referenced the old tab/type:
+- `src/types/domain.ts` — `CategoryReference` interface still defined and exported, unused by any real caller after the migration.
+- `src/sheets/client.ts` — header comment still listed `Categories_Reference` as a tab the client must support; `SheetsClient.getCategoriesReference(): Promise<CategoryReference[]>` still existed as a method reading from a tab that no longer exists in the design.
+- `src/doctor/checks.ts` — `REQUIRED_SHEET_TABS` still included `"Categories_Reference"`, which would have made the (currently unregistered, future) tab-presence check fail on a correctly-configured install.
+- `src/research/pass.ts` — docblock step 4 still said "Run LLM categorization against Categories_Reference."
+- `docs/SPEC.md` §5 (research process spec) still referenced the old tab name in its numbered steps, even though §3.4/§3.4a (added in the same migration) already described the new `categories.md` design — the spec had briefly contradicted itself.
+
+**Fix applied**: removed `CategoryReference` type and `getCategoriesReference()` method entirely, updated all four remaining doc references to point at `categories.md`. This is exactly the kind of drift a partial multi-file edit produces when the grep pass after a rename isn't exhaustive — worth calling out because it's the same failure mode CODE_REVIEW.md finding #3 was trying to prevent in the first place (unused/stale types silently rotting).
+
+**8. `EmailDraftClient.listInboundMessages()` returned `Promise<unknown[]>` (Severity: Low/Medium — same class of issue as finding #3, just missed in that pass).** `SheetsClient`'s surface was fully typed in round 1, but the email client interface — also a cross-module contract — still had one `unknown[]` return type. Anyone implementing reply-matching against `Comms_Threads` would have had zero compiler help shaping the inbound message data correctly.
+
+**Fix applied**: added a minimal, provider-agnostic `InboundMessage` interface (`externalMessageId`, `externalThreadId?`, `fromEmail`, `subject?`, `bodyText`, `receivedAtIso`) to `src/agentmail/client.ts` and typed `listInboundMessages` against it. Concrete provider implementations map their richer payload down to this shape.
+
+### Areas checked and found already solid (no changes needed)
+
+- **No `any`, no `@ts-ignore`/`@ts-nocheck` anywhere in `src/`, `test/`, or `bin/`.** Verified via grep across the full tree.
+- **`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noImplicitOverride`, `strict` all remain enabled in `tsconfig.json`** and nothing in the codebase works around them with unsafe casts.
+- **Doctor CLI design holds up**: `runDoctor()` stays free of `console.log`/`process.exit`; `bin/doctor.ts` is a genuinely thin rendering layer; `applyFix()`'s explicit switch (vs. a generalized callback) is still the right call at two fixable checks — revisit only once a third lands, per its own comment.
+- **Pure-function extraction pattern is consistent and paying off**: `checkForDuplicateLead`, `computeResearchScore`, `shouldSkipAutoAdvance`, `resolveDestinationsForEvent`, `isWithinQuietHours`, `renderDigestMessage`, `resolveDigestDestinations`, `resolveModelForTask`/`evaluateBudgetWarning`/`findMissingTierMappings`/`effectiveTierForTask` are all I/O-free and independently unit-tested — the one architectural decision from round 1 that most directly enabled catching finding #7/#8 quickly via targeted grep + typecheck rather than a runtime failure discovered later.
+- **ESM/NodeNext module resolution is applied consistently** — every relative import in `src/` uses an explicit `.js` extension (required under `NodeNext`), no mismatches found.
+- **Config schema correctly separates zod-level structural validation from cross-field sanity checks** (`checkGuardrailSanity`, `checkTierModelMapCompleteness` living in `doctor/checks.ts` rather than trying to shoehorn conditional logic into the zod schema itself) — appropriate use of each tool.
+- **`ModelUsageLogEntry`/`NotificationLogEntry` audit-trail pattern is applied uniformly** across the model-routing and notification subsystems — no gaps found where a dispatch/LLM-call path could silently skip logging.
+
+### Verification
+
+All green after round 2 fixes:
+- `npm run typecheck` — 0 errors.
+- `npm run lint` — 0 errors, 0 warnings.
+- `npm run format:check` — no diffs.
+- `npm test` — 40/40 passing across 5 test files (unchanged from before this round — findings were type/contract cleanup, not new behavior needing new tests).

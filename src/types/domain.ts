@@ -142,13 +142,6 @@ export interface ErrorRecord {
   retryCount: number;
 }
 
-/** A single product/service catalog entry from `Categories_Reference`. See docs/SPEC.md §3.4. */
-export interface CategoryReference {
-  productCategory: string;
-  typicalBusinessTypes: string[];
-  pitchNotes: string;
-}
-
 /** One row in the `Comms_Threads` tab (append-only, per-lead conversation history). See docs/SPEC.md §3.6. */
 export interface CommsThreadEvent {
   threadEventId: string;

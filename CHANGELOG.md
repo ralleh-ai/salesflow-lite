@@ -5,6 +5,24 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
+### Fixed (2026-09-07, round-2 code review)
+- Removed stale `Categories_Reference`/`CategoryReference` residue left over
+  from the earlier migration to the local `categories.md` file: unused
+  `CategoryReference` type deleted from `src/types/domain.ts`;
+  `SheetsClient.getCategoriesReference()` removed; `REQUIRED_SHEET_TABS` in
+  `src/doctor/checks.ts` no longer lists `Categories_Reference`; docblocks in
+  `src/research/pass.ts`/`src/sheets/client.ts` and `docs/SPEC.md` §5 updated
+  to reference `categories.md` instead.
+- `EmailDraftClient.listInboundMessages()` now returns a typed
+  `InboundMessage[]` (new interface in `src/agentmail/client.ts`) instead of
+  `Promise<unknown[]>` — closes the one remaining untyped cross-module
+  contract surface (matches the standard set for `SheetsClient` in the
+  initial code review's finding #3).
+- `docs/CODE_REVIEW.md` extended with a "Round 2" section documenting both
+  findings plus a checklist of areas re-verified as already solid (no `any`/
+  `@ts-ignore` anywhere, strict tsconfig flags intact, ESM `.js` import
+  extensions consistent, pure-function extraction pattern holding up).
+
 ### Changed (2026-09-07, Rick's decisions)
 - **Credentials confirmed as environment variables** — no change needed;
   this was already the design (`src/config/env.ts` reads exclusively from
