@@ -1,0 +1,19 @@
+# Environment / secrets — never commit real values
+node_modules/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+*.log
+
+# Google service account keys — never commit
+*service-account*.json
+*-key.json
+credentials/
+
+# OS/editor cruft
+.DS_Store
+*.swp
+.vscode/
+.idea/
