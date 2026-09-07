@@ -39,6 +39,39 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   override (§6.2a, `snoozeUntil` field).
 - `docs/CODE_REVIEW.md` — full review of the initial scaffold's stub code
   against the spec, with concrete fixes applied (see below).
+- `src/doctor/` + `bin/doctor.ts` — a `doctor` CLI (`npm run doctor` /
+  `doctor:fix`) that diagnoses install health (`.env` presence, required
+  env vars for the configured email provider, service account key
+  validity/permissions, `.gitignore` secret coverage, leaked-credential
+  scan, notification env sanity, guardrail internal consistency) and can
+  apply a narrow set of safe, mechanical repairs. Wired into
+  `docs/RECIPE.md` §2.5/§2.6 as the first verification step.
+- **Multi-channel notifications** (SPEC §7.1) — notifications are no
+  longer Telegram-only. New `src/notifications/notifier.ts`: a
+  `NotificationChannelAdapter` interface with one adapter per channel
+  (`telegram`, `discord`, `slack` via OpenClaw's `message` tool; `email`
+  direct-send, distinct from the drafts-only `EmailDraftClient`; `sms`;
+  `webhook`), operator-configured named destinations
+  (`notificationDestinations` in `AppConfig`), and per-event-type routing
+  that can target a specific named destination or all enabled
+  destinations on a channel. `resolveDestinationsForEvent()` and
+  `isWithinQuietHours()` are pure, unit-tested functions.
+- **Configurable digest notification** (SPEC §7.2) — new
+  `src/notifications/digest.ts`: an operator-enabled periodic rollup
+  (`DigestConfig`: cron expression, timezone, destinations, configurable
+  sections, independent quiet-hours toggle) that reads the existing
+  `Dashboard` tab's formulas (never re-derives metrics itself) and renders
+  them via the pure `renderDigestMessage()`/`resolveDigestDestinations()`
+  functions. Runs as a fourth, independent cron job
+  (`salesflow-lite-digest`) alongside discovery/research/pipeline, per
+  RECIPE.md §2.4.
+- `NotificationLogEntry` domain type (SPEC §7.3) — every notification/
+  digest dispatch attempt (sent/skipped/failed) gets an audit trail entry,
+  matching the app's existing no-silent-drops posture for lead data.
+- `.env.example` documents the multi-channel `NOTIFICATION_CHANNEL`
+  values and a new `DIGEST_ENABLED` flag; `docs/RECIPE.md` questionnaire
+  §1.7/§1.7a walks the operator through configuring destinations, routing,
+  and an optional digest during onboarding.
 
 ### Fixed
 - `src/config/env.ts` no longer hardcodes an `AGENTMAIL_API_KEY`

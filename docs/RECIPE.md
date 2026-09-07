@@ -42,9 +42,17 @@ This is written to be pasted into an agent as its task brief, or run as a `sessi
    - **Microsoft Graph API** (if they're on Microsoft 365/Outlook) — native drafts folder support.
    - **A transactional email API they already use** (SendGrid/Postmark/Mailgun) — only if they explicitly prefer not to add a new provider; flag to them that these lack native drafting and the install will instead store composed drafts in `Comms_Threads`/Drive only, never calling the provider until they separately trigger sending outside this app.
    - Whichever is chosen, confirm the same hard rule applies: **only draft/compose-capable endpoints are ever called, send endpoints are never implemented for this install.**
-7. **Notification channel**
-   - Where should lead alerts / follow-up reminders / errors go? (Telegram chat, email address, other OpenClaw-supported channel, or "none" per event type)
-   - Any quiet hours to respect?
+7. **Notification channels & routing**
+   - Which channel(s) do they want to use? Any combination of: Telegram, Discord, Slack, email (direct send — not a draft, see SPEC §7.4), SMS (requires their own provider, e.g. Twilio), webhook (their own alerting/Zapier/PagerDuty endpoint), or "none" per event type.
+   - For each channel they want, get the actual target (chat id, channel id, email address, phone number, or webhook URL) and a short name for it (e.g. "owner-telegram", "sales-team-slack") — these become named `notificationDestinations` entries.
+   - Which event types go where? (new qualified lead, research failed permanently, follow-up due, lead won, quota/budget warning) — each can route to a different destination, or `none`.
+   - Any quiet hours to respect for per-event notifications?
+7a. **Digest notification** (optional, ask even if they configured per-event notifications above — the two are complementary, not exclusive)
+   - Do they want a periodic rollup instead of/in addition to real-time pings? If yes:
+     - Cadence: cron expression (default weekly, Monday 8am) — ask in plain language ("every Monday morning", "daily at 8am") and translate to a cron expression, don't make them write one themselves.
+     - Which destination(s) should receive it? (reuse names from the notificationDestinations set above)
+     - Which sections do they care about? (pipeline funnel, leads by category, response rate, drafts pending review, guardrail usage, new leads since last digest) — default to funnel + drafts-pending + guardrail-usage if they're unsure, these three cover "is the pipeline healthy" at a glance.
+     - Should the digest itself respect quiet hours? (default no — a Monday-morning digest rarely needs the same urgency suppression as a real-time ping, but some operators will still want it)
 8. **Cost guardrail preferences** (defaults exist — only ask if operator wants to change them)
    - Max Places API calls/day (default 50)
    - Max research LLM calls/day (default 100)
@@ -87,11 +95,14 @@ Do not proceed to Section 2 until questions 1–7 have answers (8–9 can use de
 4. Set up the inbound-reply mechanism (webhook endpoint or polling, per implementation decided during build) so replies can be matched to leads and logged to `Comms_Threads` (SPEC §3.6).
 
 ### 2.4 Cron jobs (OpenClaw `cron` tool)
-Three separate jobs, each an isolated `agentTurn` job (or systemEvent if the task is simple enough to not need a full agent turn — use judgment), each with an explicit delivery path per SPEC's "every job must have delivery" rule:
+Four separate jobs, each an isolated `agentTurn` job (or systemEvent if the task is simple enough to not need a full agent turn — use judgment), each with an explicit delivery path per SPEC's "every job must have delivery" rule:
 
-1. **`salesflow-lite-discovery`** — schedule per Config `discovery_cron_interval` (default every 4h). Task: run the discovery sweep (SPEC §4) for this operator's install. Delivery: `announce` to configured notification channel on new-lead-batch summary, or `none` if operator opted out of per-run pings (but still log to History regardless).
-2. **`salesflow-lite-research`** — schedule per Config `research_cron_interval` (default every 20min). Task: run the enrichment pass (SPEC §5) for pending/in_progress leads. Delivery: `announce` on newly-`completed` or newly-`failed_permanent` leads; otherwise best-effort/quiet.
-3. **`salesflow-lite-pipeline`** — schedule per Config `pipeline_cron_interval` (default every 30min). Task: run pipeline stage transitions and draft-creation (SPEC §6). Delivery: `announce` on stage transitions the operator should know about (qualified, engaged, won, lost) and on any draft created (so they know to go review/send it).
+1. **`salesflow-lite-discovery`** — schedule per Config `discovery_cron_interval` (default every 4h). Task: run the discovery sweep (SPEC §4) for this operator's install. Delivery: notify configured destination(s) for the `discovered` event type on new-lead-batch summary, or `none` if operator opted out of per-run pings (but still log to History regardless).
+2. **`salesflow-lite-research`** — schedule per Config `research_cron_interval` (default every 20min). Task: run the enrichment pass (SPEC §5) for pending/in_progress leads. Delivery: notify on newly-`completed` or newly-`failed_permanent` leads per their configured routes; otherwise best-effort/quiet.
+3. **`salesflow-lite-pipeline`** — schedule per Config `pipeline_cron_interval` (default every 30min). Task: run pipeline stage transitions and draft-creation (SPEC §6). Delivery: notify on stage transitions the operator should know about (qualified, engaged, won, lost) and on any draft created (so they know to go review/send it), per their configured routes.
+4. **`salesflow-lite-digest`** — only created if the operator enabled a digest (questionnaire §7a). Schedule per `digest.cronExpr` (default weekly, Monday 8am). Task: run the digest sweep (SPEC §7.2) — read the `Dashboard` tab, render the configured sections, dispatch to the configured destination(s). Delivery: the digest itself *is* the delivery — this job's `delivery.mode` in the cron job spec should be `none` (the agentTurn payload dispatches directly via the configured notification destinations, not via cron's own announce mechanism), since digest routing already goes through `notificationDestinations`, not the calling session's default channel.
+
+All four jobs notify through `src/notifications/notifier.ts`'s destination routing (SPEC §7.1) rather than a single hardcoded channel — confirm during dry run (§2.5) that each configured destination actually receives a test notification, not just the first one configured.
 
 Before enabling: check `cron action=list` to avoid duplicate jobs for the same operator/install (per AGENTS.md cron protocol). Log each created `jobId` to the install's own memory/log, not the agent's personal memory.
 

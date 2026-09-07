@@ -346,4 +346,43 @@ export function checkGuardrailSanity(guardrails: {
   };
 }
 
+/** Check: NOTIFICATION_CHANNEL (fallback single-destination env vars) is a recognized value and has a target when not "none". Full multi-destination routing lives in Config/AppConfig and isn't validated by this env-only check. */
+export const notificationEnvSanityCheck: Check = {
+  id: "notification-env-sanity",
+  label: "Fallback notification env vars sane",
+  run: (ctx) => {
+    const fromDotEnv = readDotEnvFile(join(ctx.cwd, ".env"));
+    const merged = { ...fromDotEnv, ...ctx.env };
+    const channel = merged.NOTIFICATION_CHANNEL ?? "none";
+    const validChannels = ["telegram", "discord", "slack", "email", "sms", "webhook", "none"];
+    if (!validChannels.includes(channel)) {
+      return {
+        id: "notification-env-sanity",
+        label: "fallback notification env vars sane",
+        status: "fail",
+        detail: `NOTIFICATION_CHANNEL=${channel} is not one of: ${validChannels.join(", ")}.`,
+        fixable: false
+      };
+    }
+    if (channel !== "none" && !merged.NOTIFICATION_TARGET) {
+      return {
+        id: "notification-env-sanity",
+        label: "fallback notification env vars sane",
+        status: "warn",
+        detail: `NOTIFICATION_CHANNEL=${channel} but NOTIFICATION_TARGET is empty — this fallback route won't deliver anything. Configure notificationDestinations in Config for real multi-channel routing (see SPEC §7.1).`,
+        fixable: false
+      };
+    }
+    return {
+      id: "notification-env-sanity",
+      label: "fallback notification env vars sane",
+      status: "pass",
+      detail:
+        channel === "none"
+          ? "NOTIFICATION_CHANNEL=none (fallback route disabled; check Config tab notificationDestinations for real routing)."
+          : `Fallback route: ${channel} -> configured target present.`
+    };
+  }
+};
+
 export { REQUIRED_ENV_VARS, REQUIRED_SHEET_TABS, dirname };

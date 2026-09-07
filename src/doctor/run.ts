@@ -13,7 +13,8 @@ import {
   requiredEnvVarsCheck,
   serviceAccountKeyCheck,
   gitignoreCoverageCheck,
-  noLeakedSecretsCheck
+  noLeakedSecretsCheck,
+  notificationEnvSanityCheck
 } from "./checks.js";
 
 export interface DoctorReport {
@@ -28,7 +29,8 @@ const REGISTRY = [
   requiredEnvVarsCheck,
   serviceAccountKeyCheck,
   gitignoreCoverageCheck,
-  noLeakedSecretsCheck
+  noLeakedSecretsCheck,
+  notificationEnvSanityCheck
 ];
 
 /**

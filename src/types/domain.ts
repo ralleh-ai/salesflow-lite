@@ -31,7 +31,8 @@ export type HistoryEventType =
   | "stage_transition"
   | "notification_sent"
   | "outreach_draft_created"
-  | "manual_edit";
+  | "manual_edit"
+  | "digest_sent";
 
 export type CommsChannel = "email" | "call" | "sms" | "in_person" | "other";
 export type CommsDirection = "outbound" | "inbound";
@@ -42,6 +43,21 @@ export type LeadSource = "discovery" | "manual" | "import";
 
 export type DncMatchedField = "phone" | "email" | "domain" | "business_name";
 export type DncReason = "operator_added" | "unsubscribe_request" | "bounced_hard" | "legal_request";
+
+export type NotificationChannelKind =
+  "telegram" | "email" | "sms" | "discord" | "slack" | "webhook" | "none";
+
+/** One row logged whenever a notification or digest is actually dispatched. See docs/SPEC.md §7.3. */
+export interface NotificationLogEntry {
+  logId: string;
+  timestamp: string;
+  kind: "event" | "digest";
+  eventType?: HistoryEventType | "digest";
+  destinationName: string;
+  channel: NotificationChannelKind;
+  status: "sent" | "skipped_quiet_hours" | "failed";
+  detail?: string;
+}
 
 /** One row in the `Leads` tab. See docs/SPEC.md §3.1 for authoritative field semantics. */
 export interface Lead {

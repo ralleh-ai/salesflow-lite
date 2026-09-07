@@ -335,7 +335,31 @@ This tab is optional to keep updated by the operator (it's just formulas, nothin
 
 ## 7. Notifications
 
-Configurable per event type in `Config` tab. Each event type (new qualified lead, research failed_permanent, follow-up due, lead won, quota/budget warning) maps to a channel + destination, or `none`. Uses OpenClaw's `message` tool / `cron` delivery — Telegram, email, or others as available. Quiet hours respected (no 3am pings unless explicitly configured to ignore them).
+### 7.1 Multi-channel routing
+
+Notifications are no longer Telegram-only. The operator configures one or more **named destinations** (`notificationDestinations` in `Config`/`AppConfig`), each a `{ name, channel, target, enabled }` tuple. Supported channels: `telegram`, `discord`, `slack` (all routed through OpenClaw's `message` tool — never hand-rolled HTTP), `email` (direct send, not a draft — see §7.4 for why this is not a drafts-only violation), `sms` (requires an operator-configured SMS provider, e.g. Twilio), `webhook` (generic POST, for operators wiring their own alerting/Zapier/PagerDuty), and `none`.
+
+Per-event-type routing (`notifications: NotificationRoute[]`) maps an event type (new qualified lead, `research failed_permanent`, follow-up due, lead won, quota/budget warning) to a channel, optionally naming a specific destination. An event type with no configured route, or explicitly routed to `none`, is a valid silent-by-design outcome — distinct from a delivery failure. Multiple destinations may share a channel (e.g. Telegram to the owner and Slack to a sales manager for the same event type).
+
+Design in code: `src/notifications/notifier.ts` defines a `NotificationChannelAdapter` interface (one `send(target, message)` method) and one adapter per channel, mirroring the `EmailDraftClient` pattern already used for outreach. `resolveDestinationsForEvent()` is a pure function resolving event type + routing table + destinations list → the actual destinations to notify, kept separate from dispatch so routing logic has an I/O-free test seam.
+
+### 7.2 Configurable digest
+
+In addition to per-event notifications, the operator can enable a **digest** — a periodic rollup sent on its own configurable cron schedule (`digest.cronExpr`, default weekly Monday 8am), independent of the three existing crons (discovery/research/pipeline), per the project's "independent loops" design principle (§2). The digest pulls from the `Dashboard` tab's existing formulas (§6.6) — it never re-derives funnel/response metrics itself, so a human looking at the Sheet and a digest message can never disagree.
+
+Configurable digest sections (`digest.sections`, operator picks any subset): `pipeline_funnel`, `category_volume`, `response_rate`, `drafts_pending`, `guardrail_usage`, `new_leads_since_last_digest`. The digest is sent to one or more named destinations (`digest.destinationNames`), can optionally respect quiet hours (`digest.respectQuietHours` — off by default, since a Monday-morning digest is rarely actually urgent/disruptive but an operator may still want strict quiet-hours discipline).
+
+Design in code: `src/notifications/digest.ts` defines `renderDigestMessage()` (pure — DashboardSnapshot → NotificationMessage, respecting configured sections) and `resolveDigestDestinations()` (pure — digest config + destinations + quiet-hours flag → actual recipients this run), with `runDigestSweep()` as the (currently stub) cron entry point wiring both together with an actual Sheets read + dispatch.
+
+### 7.3 Delivery audit trail
+
+Every notification and digest dispatch attempt — sent, skipped (quiet hours), or failed — is logged via a `NotificationLogEntry` (new `src/types/domain.ts` type): timestamp, kind (`event`/`digest`), event type, destination name, channel, status, detail. This closes the same "no silent drops" gap that `History`/`Errors`/`Comms_Threads` already close for lead data — a failed Slack webhook must be as visible as a failed Sheets write, not swallowed by a try/catch. Reference implementation may either append these to a small `Notification_Log` tab (append-only, same discipline as `History`) or fold into `History` with `event_type=notification_sent`/`digest_sent` — left open pending the reference instance's actual notification volume; either choice must not silently drop entries.
+
+### 7.4 Why email notifications aren't drafts-only
+
+The drafts-only hard rule (§6.3/SECURITY.md) applies to **outreach to a lead** — content going to a prospect/customer. Operator-facing notifications (e.g. "new qualified lead discovered", "daily digest") go *to the operator themselves*, about their own business, not to a third party on their behalf. There is no reputational/consent risk analogous to unsolicited outreach, so `EmailNotificationAdapter` may send directly rather than draft. This distinction must be kept sharp in code: `EmailNotificationAdapter` (this module) and `EmailDraftClient` (`src/agentmail/client.ts`) are different classes with different capabilities, and neither should ever be substituted for the other. A future contributor must not "simplify" by merging them.
+
+Quiet hours are respected for per-event notifications the same way as before; SMS/phone-adjacent channels in particular should never fire outside quiet hours unless the operator explicitly opts an event type out of quiet-hours suppression (not currently exposed as a per-route override — global quiet hours apply to all event-type notifications; only the digest currently has its own independent `respectQuietHours` toggle, since a weekly digest and a real-time "lead replied!" ping have different urgency profiles).
 
 ---
 

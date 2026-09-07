@@ -27,12 +27,54 @@ export const GeographySchema = z.object({
 });
 export type Geography = z.infer<typeof GeographySchema>;
 
+export const NotificationChannelSchema = z.enum([
+  "telegram",
+  "email",
+  "sms",
+  "discord",
+  "slack",
+  "webhook",
+  "none"
+]);
+export type NotificationChannelKind = z.infer<typeof NotificationChannelSchema>;
+
 export const NotificationRouteSchema = z.object({
   eventType: z.string(),
-  channel: z.enum(["telegram", "email", "none"]),
+  channel: NotificationChannelSchema,
   target: z.string().optional()
 });
 export type NotificationRoute = z.infer<typeof NotificationRouteSchema>;
+
+/** One configured destination an operator can route event types or the digest to. See docs/SPEC.md §7.1. */
+export const NotificationDestinationSchema = z.object({
+  name: z.string(),
+  channel: NotificationChannelSchema,
+  target: z.string(),
+  enabled: z.boolean().default(true)
+});
+export type NotificationDestinationConfig = z.infer<typeof NotificationDestinationSchema>;
+
+/** Configurable digest job: pulls from the Dashboard tab's live formulas, not a re-derivation. See docs/SPEC.md §7.2. */
+export const DigestConfigSchema = z.object({
+  enabled: z.boolean().default(false),
+  cronExpr: z.string().default("0 8 * * 1"),
+  timezone: z.string().default("America/Chicago"),
+  destinationNames: z.array(z.string()).min(1),
+  sections: z
+    .array(
+      z.enum([
+        "pipeline_funnel",
+        "category_volume",
+        "response_rate",
+        "drafts_pending",
+        "guardrail_usage",
+        "new_leads_since_last_digest"
+      ])
+    )
+    .default(["pipeline_funnel", "drafts_pending", "guardrail_usage"]),
+  respectQuietHours: z.boolean().default(false)
+});
+export type DigestConfig = z.infer<typeof DigestConfigSchema>;
 
 export const CollateralMappingSchema = z.object({
   productFitCategory: z.string().optional(),
@@ -51,6 +93,8 @@ export const AppConfigSchema = z.object({
   maxResearchAttempts: z.number().int().positive().default(3),
   guardrails: GuardrailsSchema.default({}),
   notifications: z.array(NotificationRouteSchema).default([]),
+  notificationDestinations: z.array(NotificationDestinationSchema).default([]),
+  digest: DigestConfigSchema.optional(),
   templateCollateralMap: z.array(CollateralMappingSchema).default([]),
   quietHours: z
     .object({
