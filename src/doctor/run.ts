@@ -13,6 +13,7 @@ import {
   requiredEnvVarsCheck,
   serviceAccountKeyCheck,
   gitignoreCoverageCheck,
+  categoryCatalogSanityCheck,
   noLeakedSecretsCheck,
   notificationEnvSanityCheck
 } from "./checks.js";
@@ -29,6 +30,7 @@ const REGISTRY = [
   requiredEnvVarsCheck,
   serviceAccountKeyCheck,
   gitignoreCoverageCheck,
+  categoryCatalogSanityCheck,
   noLeakedSecretsCheck,
   notificationEnvSanityCheck
 ];

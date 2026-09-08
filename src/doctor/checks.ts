@@ -60,6 +60,9 @@ const REQUIRED_SHEET_TABS = [
   "DoNotContact"
 ] as const;
 
+const RUNTIME_CATALOG_PATH = "categories.md";
+const EXAMPLE_CATALOG_GLOB_NOTE = "docs/examples/categories.<business-or-niche>.md";
+
 /** Loads .env into a plain map without mutating process.env, so doctor can run alongside a live process safely. */
 function readDotEnvFile(path: string): Record<string, string> {
   if (!existsSync(path)) return {};
@@ -290,6 +293,64 @@ export const noLeakedSecretsCheck: Check = {
       label: "no obvious secrets in tracked docs",
       status: "pass",
       detail: `Scanned ${filesToScan.length} doc file(s), no obvious secret patterns found. Not a substitute for a real secret scanner (e.g. gitleaks) before public pushes.`
+    };
+  }
+};
+
+/**
+ * Check: the runtime product/service catalog has one unambiguous default path.
+ *
+ * The application intentionally reads only the repo-root `categories.md` file.
+ * Examples may live under docs/examples, but they must be named descriptively
+ * (e.g. categories.print-shop-satx.md) rather than another plain
+ * `categories.md`, otherwise operators can easily edit the wrong file before
+ * running a live lead pack.
+ */
+export const categoryCatalogSanityCheck: Check = {
+  id: "category-catalog-sanity",
+  label: "Product/service category catalog is unambiguous",
+  run: (ctx) => {
+    const runtimePath = join(ctx.cwd, RUNTIME_CATALOG_PATH);
+    const confusingExamplePath = join(ctx.cwd, "docs", "examples", "categories.md");
+
+    if (!existsSync(runtimePath)) {
+      return {
+        id: "category-catalog-sanity",
+        label: "product/service category catalog is unambiguous",
+        status: "fail",
+        detail:
+          "Runtime catalog missing: create repo-root categories.md from the template before running research/categorization.",
+        fixable: false
+      };
+    }
+
+    if (existsSync(confusingExamplePath)) {
+      return {
+        id: "category-catalog-sanity",
+        label: "product/service category catalog is unambiguous",
+        status: "fail",
+        detail: `Found a second plain categories.md at docs/examples/categories.md. Keep the root ${RUNTIME_CATALOG_PATH} as the only runtime default and rename examples like ${EXAMPLE_CATALOG_GLOB_NOTE}.`,
+        fixable: false
+      };
+    }
+
+    const content = readFileSync(runtimePath, "utf8");
+    if (/^##\s+Example\s+—/m.test(content) || content.includes("Replace before a live install")) {
+      return {
+        id: "category-catalog-sanity",
+        label: "product/service category catalog is unambiguous",
+        status: "warn",
+        detail:
+          "Root categories.md is still the template. Replace Example headings with the operator's real product/service categories before a live lead pack.",
+        fixable: false
+      };
+    }
+
+    return {
+      id: "category-catalog-sanity",
+      label: "product/service category catalog is unambiguous",
+      status: "pass",
+      detail: `Runtime catalog found at ${RUNTIME_CATALOG_PATH}; examples should use descriptive names such as ${EXAMPLE_CATALOG_GLOB_NOTE}.`
     };
   }
 };

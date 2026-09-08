@@ -17,6 +17,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 - Rewrote `docs/RECIPE.md` into a phase-tagged agent-executable recipe with a short Phase 1 onboarding flow and clear stop conditions before recurring or CRM-lite upgrades.
 - Rewrote `docs/GOOGLE_CLOUD_SETUP.md` to explicitly separate Sheets service-account auth from Places API-key auth and require provider-side billing/budget alerts.
 - Restored root `categories.md` as a generic template and moved the San Antonio print-shop example into `docs/examples/categories.print-shop-satx.md`.
+- Clarified that root `categories.md` is the only runtime product/service catalog, documented the best Phase 1 default, and added a doctor check to flag confusing duplicate example catalogs or an uncustomized template.
 
 ### Added
 

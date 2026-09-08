@@ -149,7 +149,9 @@ Core fields:
 
 ### 4.3 `categories.md`
 
-Local catalog used to categorize lead fit. Format:
+The repo-root `./categories.md` file is the only runtime product/service catalog used to categorize lead fit. The implementation reads this path directly during research. Documentation examples must use descriptive names under `docs/examples/` (for example `categories.print-shop-satx.md`), never a second plain `docs/examples/categories.md`.
+
+Format:
 
 ```markdown
 ## Product or Service Category
@@ -159,7 +161,9 @@ Local catalog used to categorize lead fit. Format:
 **Pitch notes**: Short notes about why this category needs the offer.
 ```
 
-Keep it short. Large catalogs increase token cost when model-based categorization is enabled.
+Best default for Phase 1 is 3–5 offer categories with 3–5 aligned Places-style discovery terms. The catalog answers which product/service fits a lead; `Config.discoveryTargetBusinessTypes` answers what businesses to search for. Keep both aligned and intentionally narrow.
+
+Keep it short. Large catalogs increase token cost when model-based categorization is enabled. The zero-LLM Phase 1 categorizer reads `Typical business types`; LLM categorization/drafting can also use `Pitch notes` as outreach grounding.
 
 ## 5. Data model
 

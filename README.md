@@ -12,7 +12,7 @@ SalesFlow-Lite is a repo and operating recipe for building low-cost lead-generat
 
 1. **Find** businesses in configured ZIP codes using explicit Google Places search terms.
 2. **Enrich** those businesses with public website/contact/social signals.
-3. **Score** fit against a local `categories.md` product/service catalog.
+3. **Score** fit against the repo-root `categories.md` product/service catalog (the only runtime default).
 4. **Deliver** a human-reviewable lead pack in Google Sheets.
 5. **Optionally draft** outreach for operator review — never automatic sending.
 6. **Optionally recur** on a schedule once the batch workflow proves valuable.
@@ -155,9 +155,18 @@ The current implementation reads an AppConfig JSON blob from a `json_config` row
 
 ### `categories.md` — product/service fit catalog
 
-This is prompt/context material, not secret data. Keep it concise because longer category files increase model cost when LLM categorization is enabled.
+`./categories.md` at the repo root is the **only runtime catalog**. Research/categorization reads that file by default; `docs/examples/` contains named examples only, such as `categories.print-shop-satx.md`. Avoid creating another plain `docs/examples/categories.md` because operators may edit the example and wonder why live categorization did not change.
 
-The default file is a template. Put real business-specific examples in separate install copies or `docs/examples/`.
+This catalog is prompt/context material, not secret data. Keep it concise because longer category files increase model cost when LLM categorization is enabled.
+
+Best default for a first run:
+
+1. Pick 3–5 products/services the business can sell confidently now.
+2. For each one, list matching **Typical business types** using Google Places-style terms.
+3. Add short **Pitch notes** explaining the fit; these become outreach grounding later.
+4. Mirror the highest-priority target terms in `Config.discoveryTargetBusinessTypes` so discovery and categorization stay aligned.
+
+The default file is a template. For a live install, replace its `Example — ...` headings with the operator's real product/service categories before running `npm run lead:research` or `npm run lead:batch`.
 
 ## Data model
 
@@ -201,6 +210,7 @@ The model is the orchestrator and reviewer. It is not the database.
 | [`docs/RECIPE.md`](./docs/RECIPE.md) | Agent-executable install and operating recipe, phase-tagged. |
 | [`docs/SPEC.md`](./docs/SPEC.md) | Product/technical spec mapped to the four-phase roadmap. |
 | [`docs/GOOGLE_CLOUD_SETUP.md`](./docs/GOOGLE_CLOUD_SETUP.md) | Google Cloud, Sheets, service account, and Places API key setup. |
+| [`docs/examples/`](./docs/examples/) | Named example category catalogs. Copy ideas from these; the runtime default remains root `categories.md`. |
 | [`SECURITY.md`](./SECURITY.md) | Security invariants and credential rules. |
 | [`CONTRIBUTING.md`](./CONTRIBUTING.md) | Development standards and test expectations. |
 | [`CHANGELOG.md`](./CHANGELOG.md) | What changed and what remains open. |

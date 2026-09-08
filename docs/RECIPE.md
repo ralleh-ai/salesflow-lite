@@ -103,7 +103,9 @@ Use low limits for the first run. Increase only after reviewing quality.
 
 ## 4. Prepare `categories.md`
 
-Use the root `categories.md` template. Keep it concise:
+Use the repo-root `categories.md` template. This is the **only runtime default**; the code reads `./categories.md`. Files in `docs/examples/` are named examples only, such as `categories.print-shop-satx.md`. Do not create or rely on a second plain `docs/examples/categories.md`.
+
+Best default: 3–5 product/service categories the business can sell confidently now. For each category, define the businesses most likely to buy it and why the offer fits. Keep it concise:
 
 ```markdown
 ## Menus & Signage
@@ -112,6 +114,15 @@ Use the root `categories.md` template. Keep it concise:
 
 **Pitch notes**: Menus, table tents, window decals, sandwich boards, and seasonal promo signage.
 ```
+
+Use this process to obtain and categorize the operator's offer before discovery:
+
+1. Ask: “Which products/services do you most want to sell in the first lead pack?”
+2. Collapse overlapping answers into 3–5 categories. Example: “menus,” “table tents,” and “window decals” can become `Menus & Signage`.
+3. For each category, list buyer types in Places-style language: `restaurants`, `cafes`, `bars`, `food trucks`.
+4. Put the highest-priority buyer types into `Config.discoveryTargetBusinessTypes`; these drive Google Places discovery.
+5. Put the same or more detailed buyer types under `Typical business types`; these drive Phase 1 keyword categorization.
+6. Write `Pitch notes` as factual fit rationale. Later outreach drafts may use these notes, but drafts still require explicit operator approval and must never be sent automatically.
 
 The Phase 1 keyword categorizer reads “Typical business types”; future LLM categorization also reads “Pitch notes.”
 
@@ -168,6 +179,7 @@ An OpenClaw-facing recipe/skill should include:
 - the exact `.env` variable list,
 - the Sheet tab/header setup steps,
 - the `json_config` template,
+- the root `categories.md` offer-catalog template and named example convention,
 - the run commands,
 - the result-summary format,
 - the stop conditions.
@@ -177,6 +189,7 @@ An OpenClaw-facing recipe/skill should include:
 The model should:
 
 - translate the operator’s business into narrow target terms,
+- turn the operator’s products/services into 3–5 clear `categories.md` offer categories,
 - recommend a small first batch size,
 - explain tradeoffs,
 - review lead quality,

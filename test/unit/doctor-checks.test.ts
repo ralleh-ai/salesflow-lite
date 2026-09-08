@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { checkGuardrailSanity, checkTierModelMapCompleteness } from "../../src/doctor/checks.js";
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import {
+  categoryCatalogSanityCheck,
+  checkGuardrailSanity,
+  checkTierModelMapCompleteness
+} from "../../src/doctor/checks.js";
+
+function tempRepo(): string {
+  return mkdtempSync(join(tmpdir(), "salesflow-lite-test-"));
+}
 
 describe("checkGuardrailSanity", () => {
   it("passes when daily budgets comfortably exceed cron run frequency", () => {
@@ -60,5 +71,62 @@ describe("checkTierModelMapCompleteness", () => {
       premium: "claude-sonnet-5"
     });
     expect(result.status).toBe("pass");
+  });
+});
+
+describe("categoryCatalogSanityCheck", () => {
+  it("fails when the root runtime catalog is missing", () => {
+    const cwd = tempRepo();
+    const result = categoryCatalogSanityCheck.run({ cwd, env: {}, applyFixes: false });
+    expect(result.status).toBe("fail");
+    expect(result.detail).toContain("repo-root categories.md");
+  });
+
+  it("fails when docs/examples contains another plain categories.md", () => {
+    const cwd = tempRepo();
+    writeFileSync(
+      join(cwd, "categories.md"),
+      "## Menus\n\n**Typical business types**: restaurants\n",
+      "utf8"
+    );
+    mkdirSync(join(cwd, "docs", "examples"), { recursive: true });
+    writeFileSync(join(cwd, "docs", "examples", "categories.md"), "## Example\n", "utf8");
+
+    const result = categoryCatalogSanityCheck.run({ cwd, env: {}, applyFixes: false });
+    expect(result.status).toBe("fail");
+    expect(result.detail).toContain("docs/examples/categories.md");
+    expect(result.detail).toContain("categories.<business-or-niche>.md");
+  });
+
+  it("warns when the root runtime catalog is still the template", () => {
+    const cwd = tempRepo();
+    writeFileSync(
+      join(cwd, "categories.md"),
+      "# Target Categories\n\n⚠️ **Template file. Replace before a live install.**\n\n## Example — Menus\n\n**Typical business types**: restaurants\n",
+      "utf8"
+    );
+
+    const result = categoryCatalogSanityCheck.run({ cwd, env: {}, applyFixes: false });
+    expect(result.status).toBe("warn");
+    expect(result.detail).toContain("still the template");
+  });
+
+  it("passes when the root runtime catalog is customized and examples are descriptively named", () => {
+    const cwd = tempRepo();
+    writeFileSync(
+      join(cwd, "categories.md"),
+      "## Menus\n\n**Typical business types**: restaurants\n",
+      "utf8"
+    );
+    mkdirSync(join(cwd, "docs", "examples"), { recursive: true });
+    writeFileSync(
+      join(cwd, "docs", "examples", "categories.print-shop-satx.md"),
+      "## Menus\n",
+      "utf8"
+    );
+
+    const result = categoryCatalogSanityCheck.run({ cwd, env: {}, applyFixes: false });
+    expect(result.status).toBe("pass");
+    expect(result.detail).toContain("Runtime catalog found");
   });
 });
