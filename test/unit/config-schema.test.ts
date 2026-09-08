@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { GuardrailsSchema } from "../../src/config/schema.js";
+import { AppConfigSchema, GuardrailsSchema } from "../../src/config/schema.js";
 
 describe("GuardrailsSchema", () => {
   it("applies documented defaults when no overrides are given", () => {
@@ -16,5 +16,16 @@ describe("GuardrailsSchema", () => {
   it("rejects non-positive values so a bad Config tab entry fails loudly", () => {
     expect(() => GuardrailsSchema.parse({ maxPlacesApiCallsPerDay: 0 })).toThrow();
     expect(() => GuardrailsSchema.parse({ maxAgentMailDraftsPerDay: -5 })).toThrow();
+  });
+});
+
+describe("AppConfigSchema", () => {
+  it("defaults discoveryTargetBusinessTypes to an empty explicit list", () => {
+    const parsed = AppConfigSchema.parse({
+      businessName: "Acme",
+      businessDescription: "Local printer",
+      geographies: [{ label: "Downtown", zipCode: "78205" }]
+    });
+    expect(parsed.discoveryTargetBusinessTypes).toEqual([]);
   });
 });

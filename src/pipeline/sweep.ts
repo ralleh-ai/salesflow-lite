@@ -34,6 +34,12 @@ import type { EmailDraftClient } from "../agentmail/client.js";
 import type { CollateralMappingConfig } from "../config/schema.js";
 import type { Lead, PipelineStage } from "../types/domain.js";
 import type { SheetsClient } from "../sheets/client.js";
+import {
+  normalizeBusinessName,
+  normalizeDomain,
+  normalizeEmail,
+  normalizePhone
+} from "../util/normalize.js";
 
 /** Default max-dwell time (hours) per non-terminal stage before the cron auto-advances a stale lead (SPEC §6.2). Config may override per install in a future round; kept as a single shipped default table for v1. */
 const DEFAULT_MAX_DWELL_HOURS: Partial<Record<PipelineStage, number>> = {
@@ -83,6 +89,10 @@ function hoursSince(isoTimestamp: string, nowIso: string): number {
   return (new Date(nowIso).getTime() - new Date(isoTimestamp).getTime()) / (1000 * 60 * 60);
 }
 
+function addMs(nowIso: string, ms: number): string {
+  return new Date(new Date(nowIso).getTime() + ms).toISOString();
+}
+
 function buildOutreachSubjectAndBody(lead: Lead): { subject: string; bodyText: string } {
   const category = lead.productFitCategory ?? "our services";
   return {
@@ -127,24 +137,43 @@ export async function runPipelineSweep(deps: PipelineSweepDeps): Promise<void> {
   // any transition logic runs, so a lead added to DNC after discovery is
   // still caught this run.
   const dncPhones = new Set(
-    dncList.filter((e) => e.matchedField === "phone").map((e) => e.matchedValue)
+    dncList
+      .filter((e) => e.matchedField === "phone")
+      .map((e) => normalizePhone(e.matchedValue))
+      .filter((v): v is string => Boolean(v))
   );
   const dncEmails = new Set(
-    dncList.filter((e) => e.matchedField === "email").map((e) => e.matchedValue)
+    dncList
+      .filter((e) => e.matchedField === "email")
+      .map((e) => normalizeEmail(e.matchedValue))
+      .filter((v): v is string => Boolean(v))
+  );
+  const dncDomains = new Set(
+    dncList
+      .filter((e) => e.matchedField === "domain")
+      .map((e) => normalizeDomain(e.matchedValue))
+      .filter((v): v is string => Boolean(v))
   );
   const dncNames = new Set(
-    dncList.filter((e) => e.matchedField === "business_name").map((e) => e.matchedValue)
+    dncList
+      .filter((e) => e.matchedField === "business_name")
+      .map((e) => normalizeBusinessName(e.matchedValue))
+      .filter(Boolean)
   );
 
   for (const lead of allLeads) {
+    let dirty = false;
     const matchesDnc =
-      (lead.phone && dncPhones.has(lead.phone)) ||
-      (lead.email && dncEmails.has(lead.email)) ||
-      dncNames.has(lead.businessName);
+      (normalizePhone(lead.phone) !== undefined && dncPhones.has(normalizePhone(lead.phone)!)) ||
+      (normalizeEmail(lead.email) !== undefined && dncEmails.has(normalizeEmail(lead.email)!)) ||
+      (normalizeDomain(lead.website) !== undefined &&
+        dncDomains.has(normalizeDomain(lead.website)!)) ||
+      dncNames.has(normalizeBusinessName(lead.businessName));
     if (matchesDnc && !lead.dnc) {
       lead.dnc = true;
       lead.lastTouchedAt = now;
       await sheets.upsertLead(lead);
+      dirty = true;
     }
 
     if (shouldSkipAutoAdvance(lead, now)) {
@@ -203,7 +232,8 @@ export async function runPipelineSweep(deps: PipelineSweepDeps): Promise<void> {
       } else if (!lead.email) {
         // No drops: reschedule rather than silently skip a lead with no
         // email yet — research may still be in progress or failed_permanent.
-        lead.nextActionAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+        lead.nextActionAt = addMs(now, 24 * 60 * 60 * 1000);
+        dirty = true;
         await sheets.appendError({
           timestamp: now,
           component: "pipeline_cron",
@@ -264,7 +294,8 @@ export async function runPipelineSweep(deps: PipelineSweepDeps): Promise<void> {
           });
           // No drops: reschedule for retry rather than leaving next_action_at
           // stale (SPEC §6.3's "never silently marked done" rule).
-          lead.nextActionAt = new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString();
+          lead.nextActionAt = addMs(now, 4 * 60 * 60 * 1000);
+          dirty = true;
         }
       }
     }
@@ -280,12 +311,12 @@ export async function runPipelineSweep(deps: PipelineSweepDeps): Promise<void> {
       // lead with no explicit reason goes to `nurture`, not `lost`.
       lead.pipelineStage = "nurture";
       lead.pipelineStageSince = now;
-      lead.nextActionAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      lead.nextActionAt = addMs(now, 30 * 24 * 60 * 60 * 1000);
       lead.nextActionType = "manual_review";
       stageChanged = true;
     }
 
-    if (stageChanged || lead.dnc !== undefined) {
+    if (stageChanged || dirty) {
       lead.lastTouchedAt = now;
       await sheets.upsertLead(lead);
     }

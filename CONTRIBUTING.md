@@ -1,50 +1,68 @@
 # Contributing to SalesFlow-Lite
 
-## Before you write code
+SalesFlow-Lite is phase-based:
 
-This project is spec-first. `docs/SPEC.md` is the source of truth for data
-model, pipeline stages, and guardrail defaults — if your change touches any
-of those, update `SPEC.md` in the same PR (or before it) rather than letting
-code and spec drift apart.
+1. Batch Lead Scout.
+2. OpenClaw Recipe / Skill Pattern.
+3. Recurring Mode.
+4. CRM-Lite.
+
+Keep changes scoped to the phase they improve. Do not make Phase 1 depend on Phase 4 infrastructure.
+
+## Before writing code
+
+- Read `README.md`, `docs/SPEC.md`, and the relevant phase section in `docs/RECIPE.md`.
+- If behavior changes, update docs in the same PR.
+- If a change spends money, sends notifications, creates drafts, or touches credentials, state the safety/guardrail impact explicitly.
 
 ## Local setup
 
 ```bash
 npm install
-cp .env.example .env   # fill in real values — never commit .env
+cp .env.example .env
 npm run typecheck
 npm run lint
+npm run format:check
 npm test
+npm run build
 ```
 
 ## Code standards
 
-- TypeScript, strict mode. No `any` without a comment explaining why.
-- All Sheets access goes through `src/sheets/client.ts` — no direct
-  `googleapis` calls elsewhere.
-- All AgentMail access goes through `src/agentmail/client.ts` — **and that
-  module must never implement a send endpoint call.** See `SECURITY.md`.
-- New modules that touch `pipeline_stage` must not exist outside
-  `src/pipeline/` — see `docs/SPEC.md` §6 ("only writer allowed to change
-  pipeline_stage").
-- Run `npm run format` before committing.
+- TypeScript strict mode.
+- No `any` without an explanatory comment.
+- Prefer pure functions for matching, scoring, routing, and rendering.
+- All Sheets access goes through `src/sheets/client.ts`.
+- All Places discovery goes through `src/discovery/sweep.ts`.
+- All outreach draft providers go through `EmailDraftClient`.
+- No prospect-send endpoint may be implemented without an explicit spec/security change.
+- Phase 1 must not require AgentMail, cron, digest, or CRM pipeline setup.
+- Use explicit target terms; never add broad fallback discovery.
 
-## Commit / PR conventions
+## Testing expectations
 
-- Reference the relevant `docs/SPEC.md` section in your PR description.
-- Fill out `.github/PULL_REQUEST_TEMPLATE.md` checklist honestly.
-- Keep PRs scoped to one module/concern where possible — this makes spec
-  cross-referencing easier for reviewers.
+Run before submitting:
 
-## Testing
+```bash
+npm run typecheck && npm run lint && npm run format:check && npm test && npm run build
+```
 
-- Unit tests live in `test/unit/`, mirroring `src/` structure.
-- Fixtures (sample Places API responses, sample scraped HTML, etc.) live in
-  `test/fixtures/`.
-- Prefer testing pure logic (scoring, state transitions, schema validation)
-  over mocking Google/AgentMail APIs end-to-end; keep API-boundary code thin
-  enough that it doesn't need heavy mocking to be confident in.
+Add tests for:
 
-## Questions
+- config/env changes,
+- dedupe/DNC normalization,
+- budget/cost behavior,
+- pipeline transitions,
+- Sheet row mapping,
+- model-output parsing,
+- CLI smoke behavior where practical.
 
-Open an issue using the appropriate template in `.github/ISSUE_TEMPLATE/`.
+## PR checklist
+
+- [ ] Phase impact is clear.
+- [ ] Docs updated.
+- [ ] Tests added/updated.
+- [ ] Full local gate passes.
+- [ ] No credentials or live business data committed.
+- [ ] Drafts-only invariant preserved.
+- [ ] Phase 1 remains runnable without email-provider setup.

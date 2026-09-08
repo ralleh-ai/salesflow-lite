@@ -103,3 +103,69 @@ export function createLlmCategorizer(
 ): LlmCategorizationClient {
   return new GenericLlmCategorizer(invokeModel, resolvedModel);
 }
+
+interface ParsedCatalogCategory {
+  name: string;
+  terms: string[];
+  pitchNotes?: string;
+}
+
+function parseCatalog(markdown: string): ParsedCatalogCategory[] {
+  const sections = markdown.split(/^##\s+/m).slice(1);
+  return sections
+    .map((section) => {
+      const [rawTitle = "", ...rest] = section.split("\n");
+      const body = rest.join("\n");
+      const typical = body.match(/\*\*Typical business types\*\*:\s*([^\n]+)/i)?.[1] ?? "";
+      const pitchNotes = body.match(/\*\*Pitch notes\*\*:\s*([\s\S]*?)(?=\n\n|$)/i)?.[1]?.trim();
+      const terms = typical
+        .split(",")
+        .map((term) => term.trim().toLowerCase())
+        .filter(Boolean);
+      return { name: rawTitle.trim(), terms, ...(pitchNotes ? { pitchNotes } : {}) };
+    })
+    .filter((category) => category.name && category.terms.length > 0);
+}
+
+function termMatches(haystack: string, term: string): boolean {
+  if (haystack.includes(term)) return true;
+  if (term.endsWith("s") && haystack.includes(term.slice(0, -1))) return true;
+  return false;
+}
+
+/**
+ * Deterministic, zero-LLM categorizer for Phase 1 lead packs. It matches the
+ * lead name/category/scraped text against categories.md's "Typical business
+ * types" terms, providing a cheap baseline before an operator opts into LLM
+ * judgment for higher-touch outreach.
+ */
+export function createKeywordCategorizer(): LlmCategorizationClient {
+  return {
+    async categorize(input: CategorizationInput): Promise<CategorizationResult> {
+      const haystack = [input.businessName, input.placesCategory, input.scrapedDescription ?? ""]
+        .join("\n")
+        .toLowerCase();
+      const categories = parseCatalog(input.categoriesMarkdown);
+      let best: { category: ParsedCatalogCategory; matches: number } | undefined;
+      for (const category of categories) {
+        const matches = category.terms.filter((term) => termMatches(haystack, term)).length;
+        if (matches > 0 && (!best || matches > best.matches)) best = { category, matches };
+      }
+
+      if (!best) {
+        return {
+          category: "none",
+          confidence: 0,
+          rationale:
+            "No configured category terms matched the lead name, Places category, or scraped website text."
+        };
+      }
+
+      return {
+        category: best.category.name,
+        confidence: Math.min(0.8, 0.45 + best.matches * 0.15),
+        rationale: `Matched ${best.matches} configured target term(s) for ${best.category.name}. ${best.category.pitchNotes ?? "Review manually before outreach."}`
+      };
+    }
+  };
+}

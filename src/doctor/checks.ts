@@ -47,7 +47,8 @@ export interface Check {
 
 const REQUIRED_ENV_VARS = [
   "GOOGLE_SERVICE_ACCOUNT_KEY_PATH",
-  "GOOGLE_SHEETS_SPREADSHEET_ID"
+  "GOOGLE_SHEETS_SPREADSHEET_ID",
+  "GOOGLE_PLACES_API_KEY"
 ] as const;
 
 const REQUIRED_SHEET_TABS = [
@@ -120,13 +121,13 @@ export const requiredEnvVarsCheck: Check = {
       };
     }
 
-    if (!merged.AGENTMAIL_API_KEY) {
+    if ((merged.EMAIL_PROVIDER ?? "none") === "agentmail" && !merged.AGENTMAIL_API_KEY) {
       return {
         id: "required-env-vars",
         label: "required environment variables set",
         status: "fail",
         detail:
-          "AGENTMAIL_API_KEY is not set. AgentMail is the sole supported email provider. See src/config/env.ts.",
+          "EMAIL_PROVIDER=agentmail but AGENTMAIL_API_KEY is not set. Phase 1 lead packs can use EMAIL_PROVIDER=none; CRM outreach drafts require AgentMail.",
         fixable: false
       };
     }

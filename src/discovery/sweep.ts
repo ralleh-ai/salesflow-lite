@@ -40,6 +40,7 @@ import { randomUUID } from "node:crypto";
 import type { Geography } from "../config/schema.js";
 import type { DoNotContactEntry, Lead } from "../types/domain.js";
 import type { SheetsClient } from "../sheets/client.js";
+import { extractZip, normalizeBusinessName, normalizePhone } from "../util/normalize.js";
 
 /** Fixed operational default search radius (meters) for a ZIP-anchored Places search. See module docstring / docs/SPEC.md §3.4a. */
 export const DISCOVERY_SEARCH_RADIUS_METERS = 8000;
@@ -51,29 +52,6 @@ const BACKOFF_MAX_ATTEMPTS = 6;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/** Strips formatting and returns the last 10 digits of a phone number, for US-number comparison (SPEC §4.2). Returns undefined if fewer than 10 digits remain. */
-function normalizePhone(phone: string | undefined): string | undefined {
-  if (!phone) return undefined;
-  const digits = phone.replace(/\D/g, "");
-  if (digits.length < 10) return undefined;
-  return digits.slice(-10);
-}
-
-/** Lowercases, strips common legal suffixes and punctuation, for fuzzy business-name comparison (SPEC §4.2). */
-function normalizeBusinessName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/\b(llc|inc|incorporated|corp|corporation|co)\b\.?/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-/** Extracts a 5-digit US ZIP from a formatted address string, if present. */
-function extractZip(address: string): string | undefined {
-  const match = address.match(/\b(\d{5})(-\d{4})?\b/);
-  return match ? match[1] : undefined;
 }
 
 /**
@@ -226,15 +204,18 @@ export async function runDiscoverySweep(deps: DiscoverySweepDeps): Promise<void>
     sheets.getDoNotContactList()
   ]);
 
-  const targetBusinessTypes = config.templateCollateralMap
-    .map((m) => m.productFitCategory)
-    .filter((c): c is string => Boolean(c));
-  // Fall back to a generic sweep keyword if no product-fit categories are
-  // mapped yet in Config — categories.md drives research-time categorization
-  // (SPEC §3.4), but discovery still needs *some* Places query terms to run;
-  // "local business" is a broad, harmless default that surfaces something
-  // for a fresh install rather than discovery silently doing nothing.
-  const businessTypes = targetBusinessTypes.length > 0 ? targetBusinessTypes : ["local business"];
+  const businessTypes = config.discoveryTargetBusinessTypes;
+  if (businessTypes.length === 0) {
+    await sheets.appendError({
+      timestamp: nowIso(),
+      component: "discovery_cron",
+      errorType: "missing_discovery_targets",
+      message:
+        "Config.discoveryTargetBusinessTypes is empty. Refusing to run an expensive broad Places search; configure 3-5 explicit target business types first.",
+      retryCount: 0
+    });
+    return;
+  }
 
   const geographies: Geography[] = config.geographies;
   const combinations = geographies.flatMap((geo) => businessTypes.map((type) => ({ geo, type })));
@@ -242,7 +223,7 @@ export async function runDiscoverySweep(deps: DiscoverySweepDeps): Promise<void>
 
   // Rotate the starting combination by hour-of-day so a budget-exhausted
   // run doesn't always starve the same tail-end combinations (SPEC §4 step 10).
-  const rotationOffset = new Date().getUTCHours() % combinations.length;
+  const rotationOffset = new Date(nowIso()).getUTCHours() % combinations.length;
   const rotated = [...combinations.slice(rotationOffset), ...combinations.slice(0, rotationOffset)];
 
   let callsUsed = 0;

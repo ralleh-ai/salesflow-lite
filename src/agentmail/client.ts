@@ -1,9 +1,8 @@
 /**
  * Email provider integration — DRAFTS ONLY, regardless of provider.
  *
- * HARD SAFETY RULE: no implementation behind this interface (AgentMail —
- * the sole supported provider, see docs/SPEC.md §6.4 for the alternatives
- * comparison kept for context) may implement, call, or expose a send
+ * HARD SAFETY RULE: no implementation behind this interface (AgentMail is
+ * the only implemented provider today) may implement, call, or expose a send
  * endpoint. Only draft/compose creation and inbound-message reading are in
  * scope. See docs/SPEC.md §6.3/§6.4 and docs/RECIPE.md §0/§2.3.
  *

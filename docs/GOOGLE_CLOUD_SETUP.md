@@ -1,92 +1,123 @@
-# Getting Google Cloud Credentials for SalesFlow-Lite
+# Google Cloud Setup for SalesFlow-Lite
 
-Status: reference doc, for Rick (operator) to follow manually.
-Produces: a service account JSON key with access to **Places API** and **Google Sheets API**, plus a target Google Sheet shared with that service account.
+Status: reference setup guide for Phase 1 lead packs.
 
-This is a one-time setup per install (each operator/business does this once for their own instance).
+SalesFlow-Lite uses two separate Google credentials:
 
----
+1. **Google Sheets API** — service account JSON key.
+2. **Google Places API** — restricted API key.
 
-## Step 1 — Create a Google Cloud Project
+Do not confuse these. The service account is for Sheets. The Places API key is for discovery.
 
-1. Go to https://console.cloud.google.com/
-2. Sign in with the Google account that should own this project (can be a personal or business Google account — use whichever you want billing/ownership tied to).
-3. Click the project dropdown (top left, next to "Google Cloud") → **New Project**.
-4. Name it something identifiable, e.g. `salesflow-lite-<business-name>` (e.g. `salesflow-lite-printshop-satx`).
-5. Leave "Organization"/"Location" as default unless you have a specific Google Workspace org to attach it to.
-6. Click **Create**. Wait for the notification that the project is ready, then select it from the project dropdown.
+## Step 1 — Create a Google Cloud project
 
-## Step 2 — Enable Billing
+1. Go to <https://console.cloud.google.com/>.
+2. Sign in with the Google account that should own billing and project access.
+3. Create a new project, e.g. `salesflow-lite-<business-name>`.
+4. Select the project after it is created.
 
-Places API requires a billing account, even within the free-tier usage.
+## Step 2 — Enable billing and budget alerts
 
-1. In the left sidebar (or search bar), go to **Billing**.
-2. Link an existing billing account or create a new one (requires a payment method).
-3. Confirm the new project is linked to that billing account.
+Places API requires billing even for low-volume usage.
 
-*Note: Google gives Maps Platform APIs a recurring monthly credit ($200 as of last general knowledge, but check current terms at https://mapsplatform.google.com/pricing/ since this changes). Our cost guardrails (default 50 Places calls/day) are intentionally conservative to stay well inside typical free-tier usage, but you should still keep an eye on the Billing dashboard for the first month.*
+1. Open **Billing**.
+2. Link or create a billing account.
+3. Add a budget alert for the project before running discovery.
 
-## Step 3 — Enable Required APIs
+Recommendation for first tests: set a low alert threshold. SalesFlow-Lite has software guardrails, but provider-side billing alerts are still the final safety net.
 
-With the project selected:
+## Step 3 — Enable APIs
 
-1. Go to **APIs & Services → Library** (or https://console.cloud.google.com/apis/library).
-2. Search for and enable, one at a time:
-   - **Places API** (sometimes shown as "Places API (New)" — enable the current/new version)
-   - **Google Sheets API**
-3. Each will show "Enable" → click it → wait for confirmation.
+Go to **APIs & Services → Library** and enable:
 
-## Step 4 — Create a Service Account
+- **Google Sheets API**
+- **Places API** / **Places API (New)**, whichever is current for your Google Cloud project
 
-A service account is a non-human identity the app uses to authenticate — this is what lets the cron jobs read/write your Sheet and call Places API without your personal login.
+## Step 4 — Create the Sheets service account
 
-1. Go to **APIs & Services → Credentials** (https://console.cloud.google.com/apis/credentials).
+1. Go to **APIs & Services → Credentials**.
 2. Click **Create Credentials → Service Account**.
-3. Name it, e.g. `salesflow-lite-service`.
-4. Click **Create and Continue**.
-5. Role assignment (optional at project level): you can skip granting a project-wide IAM role here — access to the actual Sheet is granted separately in Step 6 by sharing the sheet directly with the service account's email, which is the more precise/least-privilege approach. Click **Continue**, then **Done**.
+3. Name it, e.g. `salesflow-lite-sheets`.
+4. You can skip broad project-level roles; Sheet access is granted by sharing the specific spreadsheet.
+5. Create the service account.
 
-## Step 5 — Generate the JSON Key
+## Step 5 — Generate the service account JSON key
 
-1. Back on the **Credentials** page, find your new service account under "Service Accounts" and click into it.
-2. Go to the **Keys** tab.
-3. Click **Add Key → Create new key**.
-4. Choose **JSON**, click **Create**.
-5. A `.json` file downloads automatically — this is the credential file. **Treat this like a password.** Do not commit it to git, do not paste its contents into chat, do not put it in the Google Sheet.
-6. Note the service account's **email address** (visible on its details page, looks like `salesflow-lite-service@<project-id>.iam.gserviceaccount.com`) — you'll need this for Step 6.
+1. Open the service account.
+2. Go to **Keys**.
+3. Click **Add Key → Create new key → JSON**.
+4. Download the file.
+5. Store it outside git, commonly:
 
-## Step 6 — Create and Share the Target Google Sheet
+```text
+./credentials/service-account.json
+```
 
-1. Go to https://sheets.google.com and create a new blank spreadsheet.
+6. Restrict permissions where possible:
+
+```bash
+chmod 600 ./credentials/service-account.json
+```
+
+Never paste this file into chat, Sheets, docs, or commits.
+
+## Step 6 — Create and share the target Google Sheet
+
+1. Create a blank Sheet at <https://sheets.google.com>.
 2. Name it, e.g. `SalesFlow-Lite - <Business Name>`.
-3. Click **Share** (top right).
-4. Paste in the service account's email address (from Step 5.6).
-5. Set its permission to **Editor**.
-6. Uncheck "Notify people" (it's a service account, not a person) and click **Share**.
-7. Copy the spreadsheet's ID from its URL: `https://docs.google.com/spreadsheets/d/<THIS-PART>/edit` — you'll need this ID for install configuration.
+3. Copy the spreadsheet ID from the URL.
+4. Share the Sheet with the service account email as **Editor**.
+5. Create the required tabs from `docs/RECIPE.md`.
 
-## Step 7 — Restrict the API Key / Service Account (Recommended Hardening)
+## Step 7 — Create a restricted Places API key
 
-1. Back in **APIs & Services → Credentials**, confirm no separate unrestricted API key was auto-created for Places API. If one exists (sometimes prompted when enabling Maps-family APIs via certain flows), either delete it or restrict it: **Application restrictions: None needed for server-side use** but **API restrictions: limit to Places API only**.
-2. The service account itself should only ever be shared (Step 6) with the one SalesFlow-Lite sheet for this install — don't reuse the same service account across multiple businesses' sheets.
+1. Go to **APIs & Services → Credentials**.
+2. Click **Create Credentials → API key**.
+3. Rename it, e.g. `salesflow-lite-places`.
+4. Under **API restrictions**, restrict it to **Places API** only.
+5. Use application restrictions appropriate to your deployment. For a server-side OpenClaw host, IP restriction is preferred if you have a stable outbound IP.
+6. Copy the key into `.env` as `GOOGLE_PLACES_API_KEY`.
 
-## What To Hand Off / Store
+Do not use an unrestricted API key for a recurring workflow.
 
-Once done, you should have:
-- The downloaded **service account JSON key file** (keep private, store securely — e.g. a password manager or restricted-permission file location, not shared chat)
-- The **Google Cloud project ID**
-- The **spreadsheet ID** from Step 6.7
-- Confirmation that **Places API** and **Sheets API** both show as enabled under APIs & Services → Enabled APIs
+## Step 8 — Populate `.env`
 
-These four items are what the SalesFlow-Lite install process (`RECIPE.md` §2.1–2.2) needs to proceed.
+```dotenv
+GOOGLE_SERVICE_ACCOUNT_KEY_PATH=./credentials/service-account.json
+GOOGLE_SHEETS_SPREADSHEET_ID=<spreadsheet-id>
+GOOGLE_PLACES_API_KEY=<restricted-places-api-key>
+GOOGLE_CLOUD_PROJECT_ID=<project-id>
+EMAIL_PROVIDER=none
+```
 
----
+AgentMail is not required for Phase 1 lead packs. Add it only for CRM-lite draft creation.
 
-## Reference Links
+## Step 9 — Verify before spend
 
-- Google Cloud Console: https://console.cloud.google.com/
-- APIs & Services Library: https://console.cloud.google.com/apis/library
-- Credentials page: https://console.cloud.google.com/apis/credentials
-- Maps Platform pricing (verify current terms): https://mapsplatform.google.com/pricing/
-- Sheets API overview: https://developers.google.com/sheets/api
-- Places API overview: https://developers.google.com/maps/documentation/places/web-service/overview
+```bash
+npm run lead:doctor
+```
+
+The first live discovery run should use narrow target terms and low guardrails.
+
+## Hand-off checklist
+
+- [ ] Project exists.
+- [ ] Billing enabled.
+- [ ] Budget alert configured.
+- [ ] Sheets API enabled.
+- [ ] Places API enabled.
+- [ ] Service account JSON key downloaded and permission-restricted.
+- [ ] Sheet shared with service account as Editor.
+- [ ] Places API key created and restricted.
+- [ ] `.env` populated.
+- [ ] `npm run lead:doctor` has no failures.
+
+## Reference links
+
+- Google Cloud Console: <https://console.cloud.google.com/>
+- Credentials: <https://console.cloud.google.com/apis/credentials>
+- API Library: <https://console.cloud.google.com/apis/library>
+- Maps Platform pricing: <https://mapsplatform.google.com/pricing/>
+- Places API docs: <https://developers.google.com/maps/documentation/places/web-service/overview>
+- Sheets API docs: <https://developers.google.com/sheets/api>

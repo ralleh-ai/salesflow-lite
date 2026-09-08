@@ -17,7 +17,6 @@
  * and its callers (discovery/research/pipeline).
  */
 import { google, type sheets_v4 } from "googleapis";
-import { JWT } from "google-auth-library";
 import { readFileSync } from "node:fs";
 import type {
   DoNotContactEntry,
@@ -414,7 +413,7 @@ export function createSheetsClient(
     client_email: string;
     private_key: string;
   };
-  const auth = new JWT({
+  const auth = new google.auth.JWT({
     email: keyFile.client_email,
     key: keyFile.private_key,
     scopes: ["https://www.googleapis.com/auth/spreadsheets"]

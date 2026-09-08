@@ -5,6 +5,9 @@ import prettierConfig from "eslint-config-prettier";
 import globals from "globals";
 
 export default [
+  {
+    ignores: ["dist/**", "node_modules/**", "coverage/**"]
+  },
   js.configs.recommended,
   {
     files: ["src/**/*.ts", "test/**/*.ts"],
@@ -41,7 +44,7 @@ export default [
         project: "./tsconfig.json",
         sourceType: "module"
       },
-  globals: {
+      globals: {
         ...globals.node
       }
     },

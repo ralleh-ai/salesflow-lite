@@ -5,171 +5,62 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 
 ## [Unreleased]
 
-### Fixed (2026-09-07, round-2 code review)
-- Removed stale `Categories_Reference`/`CategoryReference` residue left over
-  from the earlier migration to the local `categories.md` file: unused
-  `CategoryReference` type deleted from `src/types/domain.ts`;
-  `SheetsClient.getCategoriesReference()` removed; `REQUIRED_SHEET_TABS` in
-  `src/doctor/checks.ts` no longer lists `Categories_Reference`; docblocks in
-  `src/research/pass.ts`/`src/sheets/client.ts` and `docs/SPEC.md` §5 updated
-  to reference `categories.md` instead.
-- `EmailDraftClient.listInboundMessages()` now returns a typed
-  `InboundMessage[]` (new interface in `src/agentmail/client.ts`) instead of
-  `Promise<unknown[]>` — closes the one remaining untyped cross-module
-  contract surface (matches the standard set for `SheetsClient` in the
-  initial code review's finding #3).
-- `docs/CODE_REVIEW.md` extended with a "Round 2" section documenting both
-  findings plus a checklist of areas re-verified as already solid (no `any`/
-  `@ts-ignore` anywhere, strict tsconfig flags intact, ESM `.js` import
-  extensions consistent, pure-function extraction pattern holding up).
+### Changed (2026-09-08, phase-based product refactor)
 
-### Changed (2026-09-07, Rick's decisions)
-- **Credentials confirmed as environment variables** — no change needed;
-  this was already the design (`src/config/env.ts` reads exclusively from
-  process env / `.env`, never Sheets/Docs/chat per SPEC §12).
-- **AgentMail locked in as the sole supported email provider.** Removed the
-  Gmail API / Microsoft Graph provider-selection logic from
-  `src/config/env.ts` (`EMAIL_PROVIDER` env var, `parseEnum` branch) —
-  `AGENTMAIL_API_KEY` is unconditionally required again. The
-  provider-agnostic `EmailDraftClient` interface is retained for future
-  extensibility, but no second provider is implemented or planned right
-  now. Doctor's `required-env-vars` check simplified to match.
-- **Geography switched from lat/lng + radius to ZIP-code based.**
-  `GeographySchema` (`src/config/schema.ts`) now takes a single US ZIP code
-  per configured search area; the Places API search radius is a fixed
-  operational default (documented in `src/discovery/sweep.ts`), not
-  per-geography-tunable, keeping discovery cost predictable across every
-  install. Broader coverage = add more ZIP codes, not widen a radius.
-  SPEC.md §3.3/§3.4a, RECIPE.md §1/§2.1/§4 updated to match.
-- **Target categories/product-fit catalog moved out of Sheets entirely**,
-  into a new local, version-controlled `categories.md` file at the repo
-  root (replaces the `Categories_Reference` Sheets tab design). Rationale:
-  category definitions are a one-time business-configuration decision, not
-  row-churn data — a markdown file is easier to review/diff/hand off
-  between operator and installing agent, and keeps this LLM-prompt
-  grounding data out of the live spreadsheet. `AppConfigSchema` no longer
-  has a `targetBusinessTypes` field. SPEC.md §3.4 rewritten, RECIPE.md
-  onboarding/provisioning/checklist sections updated, `docs/CODE_REVIEW.md`
-  finding #1 annotated with this supersession.
-- Wired `TokenBudgetConfigSchema` into `AppConfigSchema` as the optional
-  `tokenBudget` field (was defined but not yet attached in the prior
-  commit).
+- Repositioned SalesFlow-Lite from an always-on autonomous CRM-first project to a four-phase OpenClaw-native product ladder:
+  1. Phase 1 — Batch Lead Scout.
+  2. Phase 2 — OpenClaw Recipe / Skill Pattern.
+  3. Phase 3 — Recurring Mode.
+  4. Phase 4 — CRM-Lite.
+- Rewrote `README.md` around the phase ladder, current implementation state, developer quick start, configuration model, safety invariants, and OpenClaw operating model.
+- Rewrote `docs/SPEC.md` to make batch-first lead packs the default product shape and mark recurring/CRM behavior as later-phase capability rather than mandatory day-one scope.
+- Rewrote `docs/RECIPE.md` into a phase-tagged agent-executable recipe with a short Phase 1 onboarding flow and clear stop conditions before recurring or CRM-lite upgrades.
+- Rewrote `docs/GOOGLE_CLOUD_SETUP.md` to explicitly separate Sheets service-account auth from Places API-key auth and require provider-side billing/budget alerts.
+- Restored root `categories.md` as a generic template and moved the San Antonio print-shop example into `docs/examples/categories.print-shop-satx.md`.
 
 ### Added
-- Initial repository scaffold: TypeScript project structure, ESLint/Prettier,
-  Vitest, CI workflow, issue/PR templates.
-- `docs/SPEC.md` v1.0 — full product/technical specification.
-- `docs/RECIPE.md` v1.0 — agent-executable install recipe.
-- `docs/GOOGLE_CLOUD_SETUP.md` — Google Cloud credential provisioning guide.
-- Domain types (`src/types/domain.ts`) mirroring the Sheets schema.
-- Config schema with zod validation and documented guardrail defaults.
-- Stub modules for discovery, research, pipeline, Sheets client, and
-  AgentMail client (drafts-only) — not yet implemented, scoped and
-  documented per `docs/SPEC.md`.
-- `Comms_Threads` tab/type (`CommsThreadEvent`) — per-lead communication
-  history distinct from the system-event `History` tab (SPEC §3.6).
-- Provider-agnostic email draft interface (`EmailDraftClient`) — AgentMail
-  remains the default, Gmail API and Microsoft Graph API documented as
-  drafts-only alternatives (SPEC §6.4); `src/agentmail/client.ts` renamed
-  from a hardcoded `AgentMailClient` accordingly.
-- Google Docs/Drive collateral integration (SPEC §3.7) — per-install Drive
-  folder for email templates, brochures, invoices, proposals, RFP
-  responses, linked via a `Config` "Template & Collateral Map"
-  (`CollateralMapping` type, `templateCollateralMap` config field).
-- Formal credential security policy (SPEC §12) — all credentials live only
-  in OpenClaw-managed environment config, never Sheets/Docs/chat/git;
-  `docs/RECIPE.md` §2.6 makes verification a mandatory install step.
-- Seven MVP-hardening features (SPEC §15, third round): duplicate/conflict
-  detection (§4.2, `dupOfLeadId`), manual lead entry/import (§4.1,
-  `source` field), a formula-only `Dashboard` tab (§6.6), a
-  `DoNotContact` opt-out list (§6.5, `dnc` field/`DoNotContactEntry`
-  type), weekly CSV backup/versioning to Drive (§9.2,
-  `backupRetentionSnapshots` config), Google API rate-limit/backoff
-  hardening in the discovery loop (§4 step 9), and a manual snooze
-  override (§6.2a, `snoozeUntil` field).
-- `docs/CODE_REVIEW.md` — full review of the initial scaffold's stub code
-  against the spec, with concrete fixes applied (see below).
-- `src/doctor/` + `bin/doctor.ts` — a `doctor` CLI (`npm run doctor` /
-  `doctor:fix`) that diagnoses install health (`.env` presence, required
-  env vars for the configured email provider, service account key
-  validity/permissions, `.gitignore` secret coverage, leaked-credential
-  scan, notification env sanity, guardrail internal consistency) and can
-  apply a narrow set of safe, mechanical repairs. Wired into
-  `docs/RECIPE.md` §2.5/§2.6 as the first verification step.
-- **Multi-channel notifications** (SPEC §7.1) — notifications are no
-  longer Telegram-only. New `src/notifications/notifier.ts`: a
-  `NotificationChannelAdapter` interface with one adapter per channel
-  (`telegram`, `discord`, `slack` via OpenClaw's `message` tool; `email`
-  direct-send, distinct from the drafts-only `EmailDraftClient`; `sms`;
-  `webhook`), operator-configured named destinations
-  (`notificationDestinations` in `AppConfig`), and per-event-type routing
-  that can target a specific named destination or all enabled
-  destinations on a channel. `resolveDestinationsForEvent()` and
-  `isWithinQuietHours()` are pure, unit-tested functions.
-- **Configurable digest notification** (SPEC §7.2) — new
-  `src/notifications/digest.ts`: an operator-enabled periodic rollup
-  (`DigestConfig`: cron expression, timezone, destinations, configurable
-  sections, independent quiet-hours toggle) that reads the existing
-  `Dashboard` tab's formulas (never re-derives metrics itself) and renders
-  them via the pure `renderDigestMessage()`/`resolveDigestDestinations()`
-  functions. Runs as a fourth, independent cron job
-  (`salesflow-lite-digest`) alongside discovery/research/pipeline, per
-  RECIPE.md §2.4.
-- `NotificationLogEntry` domain type (SPEC §7.3) — every notification/
-  digest dispatch attempt (sent/skipped/failed) gets an audit trail entry,
-  matching the app's existing no-silent-drops posture for lead data.
-- `.env.example` documents the multi-channel `NOTIFICATION_CHANNEL`
-  values and a new `DIGEST_ENABLED` flag; `docs/RECIPE.md` questionnaire
-  §1.7/§1.7a walks the operator through configuring destinations, routing,
-  and an optional digest during onboarding.
-- **Model/token-budget awareness** (SPEC §19) — the app now reasons about
-  LLM calls in three abstract complexity tiers (`economy`/`standard`/
-  `premium`) rather than hardcoded model names, since available models
-  vary per OpenClaw install and change over time. New
-  `src/models/router.ts`: a pure `resolveModelForTask()` function
-  resolving, in strict precedence order, an operator `modelOverride`
-  (always wins, no exceptions) → an operator-configured or shipped-default
-  tier → that tier mapped through the operator's `tierModelMap` for their
-  chosen `posture` (`economy`/`balanced`/`quality`, default `balanced`).
-  Every LLM call is auditable via a new `ModelUsageLogEntry` domain type.
-  Two optional soft daily ceilings (`maxTokensPerDay`,
-  `maxEstimatedCostPerDayUsd`) are informational-only — crossing one logs
-  a `model_budget_warning` History event and can notify via the existing
-  multi-channel routing, but **never** aborts, downgrades, or delays an
-  in-flight cron run. New `TokenBudgetConfig` (added to `AppConfig` as
-  `tokenBudget`), `checkTierModelMapCompleteness()` doctor check, and
-  `docs/RECIPE.md` §1.8 onboarding questionnaire item walking the
-  installing agent through populating `tierModelMap` with real,
-  currently-available model ids.
+
+- `GOOGLE_PLACES_API_KEY` runtime config and doctor required-env validation. Places discovery now has an explicit credential path instead of relying on ambiguous service-account wording.
+- Optional `EMAIL_PROVIDER=none|agentmail` runtime mode. Phase 1 lead packs no longer require AgentMail; CRM-lite outreach drafts require `EMAIL_PROVIDER=agentmail` and `AGENTMAIL_API_KEY`.
+- `discoveryTargetBusinessTypes` in `AppConfigSchema`, making discovery targeting explicit and avoiding collateral-derived Places searches.
+- Shared normalization helpers in `src/util/normalize.ts` for phone, business name, email, domain, and ZIP matching.
+- Zero-LLM `createKeywordCategorizer()` for low-cost Phase 1 categorization from `categories.md`.
+- CLI entrypoint `bin/salesflow-lite.ts` plus npm scripts:
+  - `lead:doctor`
+  - `lead:discover`
+  - `lead:research`
+  - `lead:pipeline`
+  - `lead:batch`
+- Unit tests for environment loading, Phase 1 keyword categorization, and AppConfig discovery-target defaults.
 
 ### Fixed
-- `src/config/env.ts` no longer hardcodes an `AGENTMAIL_API_KEY`
-  requirement — reads a new `EMAIL_PROVIDER` variable and only requires
-  the credential the configured provider actually needs, matching the
-  provider-agnostic design in SPEC §6.4.
-- `src/config/env.ts` no longer uses unchecked `as` casts for enum-like env
-  vars (`NOTIFICATION_CHANNEL`, `NODE_ENV`, `LOG_LEVEL`, `EMAIL_PROVIDER`)
-  — a new `parseEnum()` helper validates and fails loudly on a bad value
-  instead of silently accepting a typo.
-- `SheetsClient` and the discovery/research/pipeline stub signatures now
-  use real domain types (`Lead`, `HistoryEvent`, `ErrorRecord`,
-  `CommsThreadEvent`, `CategoryReference`, `DoNotContactEntry`,
-  `AppConfig`) instead of `unknown`, and `SheetsClient` gained the
-  previously-missing `appendCommsThreadEvent()`/`getDoNotContactList()`
-  methods.
-- Fixed a real `exactOptionalPropertyTypes` typecheck error in
-  `src/config/env.ts` surfaced while validating the build.
 
-### Known gaps (tracked, not yet built)
-- No real Google Sheets API implementation yet (blocked on Google Cloud
-  credentials — see `docs/GOOGLE_CLOUD_SETUP.md`).
-- No real AgentMail/Gmail/Graph API implementation yet.
-- No real Places API discovery implementation yet.
-- Reference instance (San Antonio print shop) not yet configured.
-- `.env.example` needs a follow-up update for `EMAIL_PROVIDER`,
-  `GMAIL_OAUTH_CREDENTIALS_PATH`, `GRAPH_CLIENT_CREDENTIALS_PATH` (see
-  `docs/CODE_REVIEW.md` Known Gaps).
-- Append-only/single-writer invariants (History/Comms_Threads/Errors,
-  pipeline_stage) are documented in SPEC.md but not yet enforced by the
-  type system or a lint rule — flagged in `docs/CODE_REVIEW.md`, deferred
-  as real design work rather than rushed.
+- Added missing `dotenv` runtime dependency so `src/config/env.ts` can actually load.
+- Upgraded `googleapis` and removed the redundant direct `google-auth-library` dependency; Sheets auth now uses `google.auth.JWT` from the same dependency tree as `googleapis`.
+- Removed the vulnerable direct `uuid` dependency; the code uses `node:crypto` `randomUUID()`.
+- Discovery now refuses to run broad fallback searches when target terms are empty; it logs `missing_discovery_targets` instead.
+- Discovery rotation now respects the injected clock, improving deterministic tests/dry-runs.
+- Pipeline DNC matching now normalizes phone/email/domain/business-name values consistently.
+- Pipeline no longer writes every lead on every run due to the always-true `lead.dnc !== undefined` condition; writes now depend on explicit dirty/stage-change state.
+- Pipeline rescheduling now uses the sweep's captured `now` value instead of fresh `Date.now()` calls.
+
+### Known hardening items
+
+- Add a persistent usage ledger before trusting Phase 3 recurring mode.
+- Replace whole-row `upsertLead()` writes with field-scoped/optimistic updates to reduce Sheet clobber risk.
+- Add live Sheet tab/header validation to doctor.
+- Add website fetch timeout and response-size limits.
+- Add optional web-search fallback for leads without websites.
+- Implement at least one real notification adapter before advertising live notifications.
+- Implement digest only after Dashboard/usage ledgers are real.
+- Package a formal OpenClaw skill after the recipe stabilizes.
+
+## 2026-09-07
+
+### Added / changed
+
+- Initial TypeScript project scaffold, docs, domain types, config schema, doctor CLI, notification/digest pure helpers, model routing helpers, and core sweep modules.
+- Implemented real code paths for Google Sheets access, AgentMail draft creation, Google Places discovery, website research, LLM categorization interface, and CRM-lite pipeline sweep.
+- Added `Comms_Threads`, `DoNotContact`, snooze, duplicate detection, model/token-budget awareness, and draft-only outreach invariants.
+
+See git history and `docs/CODE_REVIEW.md` for the detailed pre-refactor review notes from the original CRM-first design arc.

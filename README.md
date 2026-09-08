@@ -1,199 +1,223 @@
 # SalesFlow-Lite
 
-**An autonomous revenue-operations engine, disguised as a spreadsheet.**
+**OpenClaw-native lead packs and lightweight CRM for small businesses.**
 
-Most pipeline tooling fails small businesses for one of two reasons: it's
-built for enterprise sales teams and demands a headcount to administer, or
-it's a glorified contact list with no actual intelligence behind it.
-SalesFlow-Lite is neither. It is a fully autonomous, closed-loop
-lead-generation and pipeline-management system — sourcing, research,
-qualification, and structured follow-up run continuously, in the
-background, without a human touching a keyboard until a decision actually
-requires human judgment.
+SalesFlow-Lite helps a small business owner turn a plain-language target market into a reviewable pack of prospects: discovered from Google Places, enriched from public websites, scored against the business's offer, and prepared for human-reviewed outreach. It is intentionally **batch-first**: prove that the leads are worth contacting before enabling recurring automation or CRM follow-up.
 
-Think of it as hiring a tireless SDR who never forgets a follow-up, never
-lets a lead go cold, and never sends an email without your sign-off first.
+The design bias is simple: deterministic code moves data and enforces budgets; OpenClaw models handle judgment, explanation, and drafting only where they add value.
 
-**What it actually does, end to end:**
+## What this is
 
-1. **Sources** — continuously scans a target geography via the Google Maps
-   Places API for businesses matching your configured ideal-customer
-   categories. This is always-on top-of-funnel generation, not a one-time
-   list pull.
-2. **Qualifies** — enriches every prospect (website, contact info, socials)
-   and scores product/service fit against *your* catalog, so your funnel is
-   never diluted with leads that don't convert.
-3. **Advances** — runs every qualified lead through a configurable pipeline
-   state machine with scheduled, no-drop follow-ups. No lead silently
-   disappears; every terminal state is explicit and auditable.
-4. **Reports** — a live Dashboard and configurable digest give you funnel
-   visibility without you having to ask for it.
+SalesFlow-Lite is a repo and operating recipe for building low-cost lead-generation workflows on OpenClaw:
 
-All of it lives in one inspectable, human-readable Google Sheet — the
-system of record every stakeholder can already read, with zero new
-infrastructure to operate or hand off. It runs on
-[OpenClaw](https://github.com/openclaw/openclaw).
+1. **Find** businesses in configured ZIP codes using explicit Google Places search terms.
+2. **Enrich** those businesses with public website/contact/social signals.
+3. **Score** fit against a local `categories.md` product/service catalog.
+4. **Deliver** a human-reviewable lead pack in Google Sheets.
+5. **Optionally draft** outreach for operator review — never automatic sending.
+6. **Optionally recur** on a schedule once the batch workflow proves valuable.
+7. **Optionally manage** a lightweight CRM pipeline on top of the same Sheet.
 
-It is engineered to be **packaged and redeployed across any small-business
-vertical** — the pipeline logic, guardrails, and reporting are configuration,
-not code, for the business you're actually running.
+## The four-phase product ladder
 
-> **Status: pre-implementation.** Specification and install recipe are
-> complete and approved (v1.0). Source modules are scaffolded but not yet
-> implemented — see [`CHANGELOG.md`](./CHANGELOG.md) for exact state.
+You can stop at any phase. That is the point.
 
----
+### Phase 1 — Batch Lead Scout
 
-## How to actually get the most out of this: think like a Chief Sales Officer, not a spreadsheet clerk
+Best for: “Find me 25 good leads this week.”
 
-The single biggest lever you control is **category and geography precision**
-in your onboarding config. A CRM is only as good as the funnel it's fed —
-garbage targeting produces a Dashboard full of vanity metrics and a pipeline
-of leads that were never going to close. Before you flip this on:
+- One bounded run.
+- Hard API-call limits.
+- Google Sheet output.
+- Zero-LLM keyword categorization available by default.
+- No email provider required.
+- No cron required.
+- No autonomous sending, ever.
 
-- **Define your ideal customer narrowly, then widen.** "Schools that need
-  banners" converts. "Any business that might need printing" does not.
-  Start narrow, watch the response-rate section of your digest, then widen
-  categories only where the data justifies it.
-- **Treat the research-completeness threshold as a qualification gate, not
-  a formality.** A lead that hasn't cleared a real research bar (working
-  contact info, verifiable fit) is not a lead — it is unqualified noise
-  competing for your outreach attention. Tune the threshold, don't just
-  accept the default.
-- **Read the guardrails as a budget, not a limit to max out.** Every daily
-  cap (API calls, LLM calls, drafts) is a lever between volume and quality.
-  Running at your ceiling every day means you've stopped tuning; running
-  meaningfully under it means you're leaving pipeline on the table.
-- **The digest is your weekly board meeting with yourself.** Read it like
-  one. Funnel counts moving the wrong direction week over week is a signal
-  to revisit targeting or messaging — not something to let accumulate
-  silently.
-- **You are the close, not the system.** SalesFlow-Lite's entire design
-  philosophy is to compress the expensive, repetitive parts of prospecting
-  (finding, researching, following up) down to zero marginal effort, so your
-  time is spent exclusively on the highest-leverage sales activity that
-  exists: talking to a qualified human being who already knows why you're
-  calling.
+### Phase 2 — OpenClaw Recipe / Skill Pattern
 
-Operated with discipline, this isn't a CRM you check. It's a funnel that
-feeds itself, and it compounds — every week of continuous, no-drop
-follow-up is pipeline a manual process would have silently lost.
+Best for: repeatable installs by an OpenClaw agent.
 
-## Why Sheets, not a database?
+- Short onboarding questionnaire.
+- Deterministic doctor checks.
+- Agent-safe operating rules.
+- Clear cost and credential boundaries.
+- A portable recipe that future agents can follow without inventing glue.
 
-Because the target user is a small business owner, not a DevOps team. A
-Google Sheet is inspectable, editable, shareable, and requires zero
-infrastructure to operate or hand off. See
-[`docs/SPEC.md` §2](./docs/SPEC.md#2-core-design-principles) for the full
-rationale and the discipline (schemas, append-only history, single-writer
-rules) that makes "Sheets as database" actually reliable instead of a mess.
+### Phase 3 — Recurring Mode
 
-## Core safety rule: Drafts only
+Best for: “Send me a fresh lead pack every Monday.”
 
-SalesFlow-Lite **never sends email automatically.** All outreach is created
-as a draft (via [AgentMail](https://agentmail.to) or an alternative provider,
-see [`docs/SPEC.md` §6.4](./docs/SPEC.md#64-email-provider-options-if-not-using-agentmail))
-for the operator to review and send manually. This is a hard, non-configurable
-rule, enforced by a provider-agnostic `EmailDraftClient` interface — see
-[`docs/SPEC.md` §6.3](./docs/SPEC.md#63-outreach-actions-v1-scope--agentmail-integration-drafts-only)
-and [`SECURITY.md`](./SECURITY.md).
+- OpenClaw cron/TaskFlow orchestration.
+- Scheduled batch runs.
+- Run summaries and failure alerts.
+- Optional digest.
+- Still bounded by per-run and per-day budgets.
 
-## Diagnose and repair an install: `npm run doctor`
+### Phase 4 — CRM-Lite
 
-Every install accumulates ways to drift out of a healthy state — a missing
-`.env`, an overly-permissive credential file, a `.gitignore` that no longer
-covers secrets, guardrail values that can't actually be satisfied by the
-configured cron cadence. Rather than debugging that by hand, run:
+Best for: lightweight follow-up tracking after the lead-pack flow proves value.
 
-```bash
-npm run doctor        # read-only diagnostic report
-npm run doctor:fix     # same report, then applies safe/mechanical repairs
-```
+- Pipeline stages.
+- Do-not-contact enforcement.
+- Snooze/manual review controls.
+- Communication history.
+- AgentMail draft creation for human review.
+- Optional collateral/template links.
 
-`doctor` checks (and `--fix` can repair): presence of `.env`, required
-environment variables for the configured email provider, service account key
-validity/permissions, `.gitignore` secret coverage, and a best-effort scan for
-leaked credentials in tracked docs. It deliberately never invents credentials,
-never deletes data, and never guesses at business config — those stay the
-operator's/agent's call, per `docs/RECIPE.md` §0. See
-[`src/doctor/checks.ts`](./src/doctor/checks.ts) for the full, growing list of
-checks and the ground rules for adding new ones.
+## Current implementation status
 
-## Documentation
+Implemented and passing local gates:
 
-Start here, in this order:
+- TypeScript strict project scaffold.
+- Google Sheets client for core tabs.
+- Google Places discovery sweep.
+- Website research/enrichment pass.
+- Zero-LLM keyword categorizer for Phase 1.
+- LLM categorization interface for future higher-quality passes.
+- Pipeline state-machine module for CRM-lite mode.
+- AgentMail drafts-only client.
+- Doctor checks for local install hygiene.
+- CLI entrypoints for lead-pack and CRM sweeps.
+- Unit tests for config, routing, digest rendering, notifications, doctor helpers, env loading, and categorization.
 
-| Document | Purpose |
-|---|---|
-| [`docs/SPEC.md`](./docs/SPEC.md) | The full product & technical specification — data model, cron design, pipeline state machine, guardrails. **Source of truth.** |
-| [`docs/RECIPE.md`](./docs/RECIPE.md) | The agent-executable install recipe — how an OpenClaw agent onboards a new operator and stands up an instance end to end. |
-| [`docs/GOOGLE_CLOUD_SETUP.md`](./docs/GOOGLE_CLOUD_SETUP.md) | Step-by-step guide to provisioning the Google Cloud project, APIs, service account, and shared Sheet a new install needs. |
-| [`CONTRIBUTING.md`](./CONTRIBUTING.md) | Code standards, local setup, testing conventions. |
-| [`SECURITY.md`](./SECURITY.md) | Hard security invariants (drafts-only rule, credential handling, scraped-content trust boundary). |
-| [`CHANGELOG.md`](./CHANGELOG.md) | What's built vs. scaffolded vs. planned. |
+Still requires live install credentials before claiming production readiness:
 
-## Architecture at a glance
+- A real Google Cloud project with Sheets API + Places API enabled.
+- A restricted Places API key.
+- A Google service-account JSON key shared to the target Sheet.
+- Optional AgentMail credentials only if CRM outreach draft creation is enabled.
 
-Three independent scheduled loops, all reading/writing one Google Sheets
-workbook, sharing nothing but the data:
-
-```
-┌────────────────┐     ┌────────────────┐     ┌────────────────┐
-│  Discovery      │     │  Research       │     │  Pipeline       │
-│  (Places API)   │     │  (scrape + LLM) │     │  (state machine)│
-│  every ~4h      │     │  every ~20min   │     │  every ~30min   │
-└───────┬─────────┘     └───────┬─────────┘     └───────┬─────────┘
-        │                       │                        │
-        └───────────────────────┴────────────────────────┘
-                                 │
-                        ┌────────▼─────────┐
-                        │  Google Sheets    │
-                        │  Leads / History  │
-                        │  Config / Errors  │
-                        │  Categories_Ref   │
-                        └───────────────────┘
-```
-
-Full rationale for the three-loop split (why discovery, research, and
-pipeline must not share a schedule) is in
-[`docs/SPEC.md` §2](./docs/SPEC.md#2-core-design-principles).
-
-## Project structure
-
-```
-salesflow-lite/
-├── docs/                     Specification, recipe, setup guides, ADRs
-│   └── adr/                  Architecture decision records (as they accumulate)
-├── src/
-│   ├── discovery/             Lead sourcing (Google Places API)
-│   ├── research/               Enrichment (scrape + LLM categorization/scoring)
-│   ├── pipeline/                Sales state machine + AgentMail draft creation
-│   ├── sheets/                    Google Sheets API client (single point of access)
-│   ├── agentmail/                  AgentMail client (drafts-only, hard rule)
-│   ├── config/                       Env + business config schema (zod-validated)
-│   ├── cron/                           Cron job wiring (OpenClaw `cron` tool)
-│   ├── types/                            Shared domain types (mirrors Sheets schema)
-│   └── util/
-├── test/
-│   ├── unit/                 Unit tests, mirrors src/ structure
-│   └── fixtures/             Sample API responses / scraped HTML for tests
-├── .github/                  CI workflow, issue/PR templates
-├── .env.example              Environment variable template
-└── package.json
-```
-
-## Getting started (once implementation lands)
+## Quick start for developers
 
 ```bash
 npm install
-cp .env.example .env      # fill in credentials — see docs/GOOGLE_CLOUD_SETUP.md
 npm run typecheck
+npm run lint
+npm run format:check
 npm test
+npm run build
 ```
 
-Standing up a real instance for an operator follows
-[`docs/RECIPE.md`](./docs/RECIPE.md) end to end — onboarding questionnaire,
-provisioning, dry run, and a post-install verification checklist.
+Create local env:
+
+```bash
+cp .env.example .env
+# Fill in GOOGLE_SERVICE_ACCOUNT_KEY_PATH, GOOGLE_SHEETS_SPREADSHEET_ID, GOOGLE_PLACES_API_KEY
+npm run lead:doctor
+```
+
+Phase 1 lead-pack commands:
+
+```bash
+npm run lead:discover -- --json
+npm run lead:research -- --json
+npm run lead:batch -- --json
+```
+
+CRM-lite outreach mode, only after AgentMail is configured:
+
+```bash
+EMAIL_PROVIDER=agentmail npm run lead:pipeline -- --json
+npm run lead:batch -- --with-outreach --json
+```
+
+## Configuration model
+
+SalesFlow-Lite deliberately separates secrets, operator config, and model grounding.
+
+### `.env` — credentials and runtime secrets
+
+Required for Phase 1:
+
+- `GOOGLE_SERVICE_ACCOUNT_KEY_PATH` — service account JSON key for Sheets.
+- `GOOGLE_SHEETS_SPREADSHEET_ID` — target workbook.
+- `GOOGLE_PLACES_API_KEY` — restricted Places API key.
+
+Optional for Phase 4:
+
+- `EMAIL_PROVIDER=agentmail`
+- `AGENTMAIL_API_KEY`
+- `AGENTMAIL_INBOX_ID`
+
+Secrets never go into Sheets, docs, chat, or git.
+
+### Google Sheet `Config` tab — business/run config
+
+The current implementation reads an AppConfig JSON blob from a `json_config` row in the `Config` tab. Important fields include:
+
+- `businessName`
+- `businessDescription`
+- `geographies` — ZIP-code search anchors.
+- `discoveryTargetBusinessTypes` — explicit Places query terms. Keep this short: 3–5 terms is a good starting point.
+- `guardrails` — Places/scrape/LLM/draft budgets and cadence defaults.
+- `notifications`, `digest`, `templateCollateralMap` — used by later phases.
+
+### `categories.md` — product/service fit catalog
+
+This is prompt/context material, not secret data. Keep it concise because longer category files increase model cost when LLM categorization is enabled.
+
+The default file is a template. Put real business-specific examples in separate install copies or `docs/examples/`.
+
+## Data model
+
+The default workbook uses these tabs:
+
+- `Leads` — one row per discovered/manual/imported business.
+- `History` — append-only system/business event log.
+- `Errors` — operational failures and retry context.
+- `Comms_Threads` — optional CRM communication timeline.
+- `DoNotContact` — source of truth for outreach suppression.
+- `Config` — validated app config.
+
+Later phases may add formula-only Dashboard panels and optional usage/notification ledgers.
+
+## Safety invariants
+
+These are non-negotiable:
+
+- **No automatic outreach sending.** The app may create drafts; a human sends.
+- **No invented credentials.** Missing credentials stop the run.
+- **No broad discovery fallback.** Empty target terms do not trigger “local business” spam searches.
+- **No silent drops.** Failures are logged; leads are not discarded invisibly.
+- **DNC before drafts.** Do-not-contact checks run before any outreach draft is created.
+- **Models are advisory.** The Sheet remains inspectable and editable by the operator.
+
+## Why OpenClaw?
+
+OpenClaw is the right runtime because this product is partly deterministic automation and partly operator judgment:
+
+- CLI/code performs bounded, testable data movement.
+- OpenClaw agents ask onboarding questions, choose sensible defaults, summarize results, and help the operator decide what to do next.
+- OpenClaw cron/TaskFlow can schedule recurring lead packs without turning every run into a free-form reasoning exercise.
+- Messaging tools can notify the operator after a run without hand-rolled provider glue.
+
+The model is the orchestrator and reviewer. It is not the database.
+
+## Documentation
+
+| Document | Purpose |
+|---|---|
+| [`docs/RECIPE.md`](./docs/RECIPE.md) | Agent-executable install and operating recipe, phase-tagged. |
+| [`docs/SPEC.md`](./docs/SPEC.md) | Product/technical spec mapped to the four-phase roadmap. |
+| [`docs/GOOGLE_CLOUD_SETUP.md`](./docs/GOOGLE_CLOUD_SETUP.md) | Google Cloud, Sheets, service account, and Places API key setup. |
+| [`SECURITY.md`](./SECURITY.md) | Security invariants and credential rules. |
+| [`CONTRIBUTING.md`](./CONTRIBUTING.md) | Development standards and test expectations. |
+| [`CHANGELOG.md`](./CHANGELOG.md) | What changed and what remains open. |
+
+## Development standards
+
+- Strict TypeScript.
+- No `any` without justification.
+- All Sheets access through `src/sheets/client.ts`.
+- All Places discovery through `src/discovery/sweep.ts`.
+- Outreach draft providers behind `EmailDraftClient`.
+- Prefer pure functions for scoring, routing, matching, and rendering.
+- Run the full gate before PRs:
+
+```bash
+npm run typecheck && npm run lint && npm run format:check && npm test && npm run build
+```
 
 ## License
 

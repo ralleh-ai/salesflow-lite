@@ -9,10 +9,12 @@ import "dotenv/config";
 export interface EnvConfig {
   googleServiceAccountKeyPath: string;
   googleSheetsSpreadsheetId: string;
+  /** Restricted server-side API key for Google Places Web Service calls. Sheets uses the service-account key; Places uses this API key. */
+  googlePlacesApiKey: string;
   googleCloudProjectId?: string | undefined;
-  /** Which email provider this install uses — AgentMail is the sole supported provider (drafts-only, see docs/SPEC.md §6.3). */
-  emailProvider: "agentmail";
-  agentMailApiKey: string;
+  /** Outreach draft provider. Phase 1 lead packs can run with none; Phase 4 CRM outreach uses AgentMail drafts. */
+  emailProvider: "none" | "agentmail";
+  agentMailApiKey?: string | undefined;
   agentMailInboxId?: string | undefined;
   notificationChannel: "telegram" | "email" | "none";
   notificationTarget?: string | undefined;
@@ -20,6 +22,7 @@ export interface EnvConfig {
   logLevel: "debug" | "info" | "warn" | "error";
 }
 
+const EMAIL_PROVIDERS = ["none", "agentmail"] as const;
 const NOTIFICATION_CHANNELS = ["telegram", "email", "none"] as const;
 const NODE_ENVS = ["development", "production", "test"] as const;
 const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
@@ -54,20 +57,22 @@ function parseEnum<T extends readonly string[]>(
 }
 
 export function loadEnvConfig(): EnvConfig {
-  // AgentMail is the sole supported email provider (Rick's decision,
-  // 2026-09-07) — drafts-only rule applies regardless, see SPEC.md §6.3.
-  const agentMailApiKey = requireEnv("AGENTMAIL_API_KEY");
+  const emailProvider = parseEnum("EMAIL_PROVIDER", EMAIL_PROVIDERS, "none");
+  const agentMailApiKey =
+    emailProvider === "agentmail" ? requireEnv("AGENTMAIL_API_KEY") : undefined;
 
-  return {
+  const config: EnvConfig = {
     googleServiceAccountKeyPath: requireEnv("GOOGLE_SERVICE_ACCOUNT_KEY_PATH"),
     googleSheetsSpreadsheetId: requireEnv("GOOGLE_SHEETS_SPREADSHEET_ID"),
+    googlePlacesApiKey: requireEnv("GOOGLE_PLACES_API_KEY"),
     googleCloudProjectId: process.env.GOOGLE_CLOUD_PROJECT_ID,
-    emailProvider: "agentmail",
-    agentMailApiKey,
+    emailProvider,
     agentMailInboxId: process.env.AGENTMAIL_INBOX_ID,
     notificationChannel: parseEnum("NOTIFICATION_CHANNEL", NOTIFICATION_CHANNELS, "none"),
     notificationTarget: process.env.NOTIFICATION_TARGET,
     nodeEnv: parseEnum("NODE_ENV", NODE_ENVS, "development"),
     logLevel: parseEnum("LOG_LEVEL", LOG_LEVELS, "info")
   };
+  if (agentMailApiKey !== undefined) config.agentMailApiKey = agentMailApiKey;
+  return config;
 }

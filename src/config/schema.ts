@@ -155,6 +155,8 @@ export const AppConfigSchema = z.object({
   businessDescription: z.string(),
   /** Product/service catalog + target business categories now live in a local `categories.md` file (see docs/SPEC.md §3.4), not this field — kept only as an optional operator-facing label override for the Config tab's summary display. */
   geographies: z.array(GeographySchema).min(1),
+  /** Explicit Google Places query terms for discovery. Keep this short (3-5 terms) for low-cost batch runs; do not infer discovery terms from collateral mappings. */
+  discoveryTargetBusinessTypes: z.array(z.string().min(1)).default([]),
   researchCompletionThreshold: z.number().min(0).max(100).default(70),
   maxResearchAttempts: z.number().int().positive().default(3),
   guardrails: GuardrailsSchema.default({}),
