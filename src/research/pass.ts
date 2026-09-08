@@ -153,15 +153,39 @@ export interface ResearchPassDeps {
   nowIso?: () => string;
 }
 
+export interface ResearchPassSummary {
+  processedLeads: number;
+  completedLeads: number;
+  failedPermanentLeads: number;
+  scrapeFetchesUsed: number;
+  categorizationRuns: number;
+  llmCallsUsed: number;
+  errors: number;
+  stoppedBecauseScrapeBudgetHit: boolean;
+  stoppedBecauseLlmBudgetHit: boolean;
+}
+
 /**
  * Runs one research pass over all leads with research_status in
  * {pending, in_progress}, oldest-discovered first, up to the configured
  * per-run/per-day budget (SPEC §5, §9.1 maxResearchLlmCallsPerDay /
  * maxScrapeFetchesPerDay).
  */
-export async function runResearchPass(deps: ResearchPassDeps): Promise<void> {
+export async function runResearchPass(deps: ResearchPassDeps): Promise<ResearchPassSummary> {
   const { sheets, categorizer, repoRoot } = deps;
   const nowIso = deps.nowIso ?? (() => new Date().toISOString());
+  const consumesLlmBudget = categorizer.consumesLlmBudget !== false;
+  const summary: ResearchPassSummary = {
+    processedLeads: 0,
+    completedLeads: 0,
+    failedPermanentLeads: 0,
+    scrapeFetchesUsed: 0,
+    categorizationRuns: 0,
+    llmCallsUsed: 0,
+    errors: 0,
+    stoppedBecauseScrapeBudgetHit: false,
+    stoppedBecauseLlmBudgetHit: false
+  };
   const config = await sheets.getConfig();
   const allLeads = await sheets.getLeads();
 
@@ -169,7 +193,7 @@ export async function runResearchPass(deps: ResearchPassDeps): Promise<void> {
     .filter((l) => l.researchStatus === "pending" || l.researchStatus === "in_progress")
     .sort((a, b) => a.discoveredAt.localeCompare(b.discoveredAt));
 
-  if (pending.length === 0) return;
+  if (pending.length === 0) return summary;
 
   const categoriesMarkdown = readCategoriesFile(repoRoot);
   let scrapesUsed = 0;
@@ -178,7 +202,13 @@ export async function runResearchPass(deps: ResearchPassDeps): Promise<void> {
   const maxLlmCalls = config.guardrails.maxResearchLlmCallsPerDay;
 
   for (const lead of pending) {
-    if (scrapesUsed >= maxScrapes && llmCallsUsed >= maxLlmCalls) break;
+    const scrapeBudgetHit = scrapesUsed >= maxScrapes;
+    const categorizationBudgetHit = consumesLlmBudget && llmCallsUsed >= maxLlmCalls;
+    if (scrapeBudgetHit && categorizationBudgetHit) {
+      summary.stoppedBecauseScrapeBudgetHit = true;
+      summary.stoppedBecauseLlmBudgetHit = true;
+      break;
+    }
 
     const before = { ...lead };
     let scrape: ScrapeResult | undefined;
@@ -186,6 +216,7 @@ export async function runResearchPass(deps: ResearchPassDeps): Promise<void> {
     if (lead.website && scrapesUsed < maxScrapes) {
       scrape = await scrapeWebsite(lead.website);
       scrapesUsed += 1;
+      summary.scrapeFetchesUsed = scrapesUsed;
       if (!scrape.reachable) {
         await sheets.appendError({
           timestamp: nowIso(),
@@ -195,6 +226,7 @@ export async function runResearchPass(deps: ResearchPassDeps): Promise<void> {
           message: `Website ${lead.website} was unreachable during research scrape.`,
           retryCount: 0
         });
+        summary.errors += 1;
       } else {
         if (scrape.email) lead.email = lead.email ?? scrape.email;
         if (scrape.phone) lead.phone = scrape.phone;
@@ -202,7 +234,10 @@ export async function runResearchPass(deps: ResearchPassDeps): Promise<void> {
       }
     }
 
-    if (llmCallsUsed < maxLlmCalls) {
+    if (lead.website && scrapeBudgetHit) summary.stoppedBecauseScrapeBudgetHit = true;
+
+    const canCategorize = !consumesLlmBudget || llmCallsUsed < maxLlmCalls;
+    if (canCategorize) {
       try {
         const categorization = await categorizer.categorize({
           businessName: lead.businessName,
@@ -213,7 +248,11 @@ export async function runResearchPass(deps: ResearchPassDeps): Promise<void> {
         lead.productFitCategory = categorization.category;
         lead.productFitConfidence = categorization.confidence;
         lead.productFitRationale = categorization.rationale;
-        llmCallsUsed += 1;
+        summary.categorizationRuns += 1;
+        if (consumesLlmBudget) {
+          llmCallsUsed += 1;
+          summary.llmCallsUsed = llmCallsUsed;
+        }
       } catch (err) {
         await sheets.appendError({
           timestamp: nowIso(),
@@ -223,7 +262,10 @@ export async function runResearchPass(deps: ResearchPassDeps): Promise<void> {
           message: err instanceof Error ? err.message : String(err),
           retryCount: 0
         });
+        summary.errors += 1;
       }
+    } else {
+      summary.stoppedBecauseLlmBudgetHit = true;
     }
 
     lead.researchScore = computeResearchScore(lead);
@@ -240,8 +282,7 @@ export async function runResearchPass(deps: ResearchPassDeps): Promise<void> {
       // change (SPEC §5.1 step 8 requires *some* record of repeated failure,
       // not a specific storage mechanism).
       const attemptMarker = "[research_attempt]";
-      const attemptCount =
-        (lead.notes?.split(attemptMarker).length ?? 1) - 1 + (before.notes ? 0 : 1);
+      const attemptCount = (before.notes?.match(/\[research_attempt\]/g)?.length ?? 0) + 1;
       if (attemptCount >= config.maxResearchAttempts) {
         lead.researchStatus = "failed_permanent";
         lead.notes =
@@ -254,6 +295,9 @@ export async function runResearchPass(deps: ResearchPassDeps): Promise<void> {
     }
 
     await sheets.upsertLead(lead);
+    summary.processedLeads += 1;
+    if (lead.researchStatus === "completed") summary.completedLeads += 1;
+    if (lead.researchStatus === "failed_permanent") summary.failedPermanentLeads += 1;
 
     const changedFields: string[] = [];
     if (lead.email !== before.email) changedFields.push("email");
@@ -273,4 +317,6 @@ export async function runResearchPass(deps: ResearchPassDeps): Promise<void> {
       detail: `score ${before.researchScore}->${lead.researchScore}; changed: ${changedFields.join(", ") || "none"}`
     });
   }
+
+  return summary;
 }

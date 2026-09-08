@@ -67,19 +67,21 @@ Best for: lightweight follow-up tracking after the lead-pack flow proves value.
 
 ## Current implementation status
 
+Phase 1 MVP is: a small business can configure one Sheet, one root `categories.md` offer catalog, and explicit Places search terms; run a bounded batch; receive reviewable leads with fit categories; and decide what to do next. It is **not** autonomous growth hacking, bulk email, or a full CRM.
+
 Implemented and passing local gates:
 
 - TypeScript strict project scaffold.
 - Google Sheets client for core tabs.
-- Google Places discovery sweep.
+- Google Places discovery sweep using Text Search plus Place Details for insertable leads.
 - Website research/enrichment pass.
-- Zero-LLM keyword categorizer for Phase 1.
+- Zero-LLM keyword categorizer for Phase 1, compatible with `maxResearchLlmCallsPerDay: 0`.
 - LLM categorization interface for future higher-quality passes.
 - Pipeline state-machine module for CRM-lite mode.
 - AgentMail drafts-only client.
 - Doctor checks for local install hygiene.
-- CLI entrypoints for lead-pack and CRM sweeps.
-- Unit tests for config, routing, digest rendering, notifications, doctor helpers, env loading, and categorization.
+- CLI entrypoints for lead-pack and CRM sweeps, including JSON and human-readable run summaries.
+- Unit tests for config, routing, digest rendering, notifications, doctor helpers, env loading, discovery, research, and categorization.
 
 Still requires live install credentials before claiming production readiness:
 
@@ -191,6 +193,17 @@ These are non-negotiable:
 - **No silent drops.** Failures are logged; leads are not discarded invisibly.
 - **DNC before drafts.** Do-not-contact checks run before any outreach draft is created.
 - **Models are advisory.** The Sheet remains inspectable and editable by the operator.
+
+## Business-practice bar
+
+SalesFlow-Lite is designed for credible B2B prospecting, not spam.
+
+- Start with a narrow ideal customer profile: specific buyer types, geography, and immediate offer.
+- Use products/services the business can fulfill now, not speculative future offers.
+- Prefer small, high-fit lead packs over large generic lists.
+- Treat `Pitch notes` as factual fit rationale, not manipulative copy.
+- Review every lead before outreach. Wrong-fit leads should be marked DNC, snoozed, or left alone.
+- Drafting is a later-phase helper; sending remains a human business decision.
 
 ## Why OpenClaw?
 

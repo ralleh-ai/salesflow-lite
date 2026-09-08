@@ -16,7 +16,7 @@ jobs:
           node-version: "20"
           cache: "npm"
       - name: Install dependencies
-        run: npm install
+        run: npm ci
       - name: Typecheck
         run: npm run typecheck
       - name: Lint
@@ -25,3 +25,5 @@ jobs:
         run: npm run format:check
       - name: Test
         run: npm test
+      - name: Build
+        run: npm run build

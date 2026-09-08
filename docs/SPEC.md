@@ -35,6 +35,8 @@ Default and recommended starting mode.
 
 Success criterion: produce a useful pack of leads under a known budget.
 
+Business criterion: the pack contains prospects that match a narrow, commercially defensible offer/market pairing — not just any businesses that happen to be nearby.
+
 ### Phase 2 — OpenClaw Recipe / Skill Pattern
 
 - A portable agent-executable recipe.
@@ -110,6 +112,10 @@ Discovery must use operator-approved target terms. If `discoveryTargetBusinessTy
 ### 3.6 No silent drops
 
 Every found lead gets a row unless the write fails. Errors are logged. Duplicate/DNC/snooze states suppress automation, not visibility.
+
+### 3.7 Credible outreach over volume
+
+The product optimizes for small, explainable, high-fit B2B lead packs. It should never encourage generic blasting, misleading personalization, scare tactics, or automated sending. A lead's `product_fit_rationale` helps an operator make a business judgment; it is not permission to contact the lead.
 
 ## 4. Configuration
 
@@ -222,14 +228,15 @@ Phase 4 communication timeline. One row per touchpoint/draft/reply.
 
 1. Run `npm run lead:doctor`.
 2. Read config from Sheet and catalog from `categories.md`.
-3. For each ZIP × target business type, call Places within the configured guardrail.
+3. For each ZIP × target business type, call Places Text Search within the configured guardrail.
 4. Dedupe by place id, then normalized phone, then normalized name + ZIP.
-5. Write new leads.
-6. Fetch public websites where present.
-7. Extract email/phone/social/basic description.
-8. Categorize with keyword baseline or configured LLM categorizer.
-9. Score research completeness.
-10. Return a run summary to the operator.
+5. For insertable leads, call Place Details for website/phone data when budget remains.
+6. Write new leads.
+7. Fetch public websites where present.
+8. Extract email/phone/social/basic description.
+9. Categorize with keyword baseline or configured LLM categorizer.
+10. Score research completeness.
+11. Return a run summary to the operator.
 
 ## 7. Guardrails and budget policy
 
@@ -242,13 +249,12 @@ Current config defaults:
 
 Required hardening before Phase 3 recurring mode is trusted:
 
-- persistent usage ledger,
-- count each Places page request, not just each query,
-- per-run and per-day enforcement,
+- persistent usage ledger for per-day enforcement,
+- carry forward each Places Text Search page request and Place Details call into that ledger,
 - visible cost/run summary,
 - failure alert when a job exits early due to budget.
 
-For Phase 1, bounded manual runs plus explicit query terms are acceptable. For recurring mode, in-memory counters are not enough.
+For Phase 1, bounded manual runs plus explicit query terms and per-run counters are acceptable. For recurring mode, in-memory counters are not enough.
 
 ## 8. Outreach and CRM-lite
 

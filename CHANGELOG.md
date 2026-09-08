@@ -13,8 +13,8 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   3. Phase 3 — Recurring Mode.
   4. Phase 4 — CRM-Lite.
 - Rewrote `README.md` around the phase ladder, current implementation state, developer quick start, configuration model, safety invariants, and OpenClaw operating model.
-- Rewrote `docs/SPEC.md` to make batch-first lead packs the default product shape and mark recurring/CRM behavior as later-phase capability rather than mandatory day-one scope.
-- Rewrote `docs/RECIPE.md` into a phase-tagged agent-executable recipe with a short Phase 1 onboarding flow and clear stop conditions before recurring or CRM-lite upgrades.
+- Rewrote `docs/SPEC.md` to make batch-first lead packs the default product shape, mark recurring/CRM behavior as later-phase capability rather than mandatory day-one scope, and define the business-practice bar for credible outreach.
+- Rewrote `docs/RECIPE.md` into a phase-tagged agent-executable recipe with a short Phase 1 onboarding flow, exact Sheet headers, a business-practice filter, and clear stop conditions before recurring or CRM-lite upgrades.
 - Rewrote `docs/GOOGLE_CLOUD_SETUP.md` to explicitly separate Sheets service-account auth from Places API-key auth and require provider-side billing/budget alerts.
 - Restored root `categories.md` as a generic template and moved the San Antonio print-shop example into `docs/examples/categories.print-shop-satx.md`.
 - Clarified that root `categories.md` is the only runtime product/service catalog, documented the best Phase 1 default, and added a doctor check to flag confusing duplicate example catalogs or an uncustomized template.
@@ -32,6 +32,7 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
   - `lead:research`
   - `lead:pipeline`
   - `lead:batch`
+- Structured discovery/research summaries in CLI output so a Phase 1 run reports new leads, API calls, categorization runs, budget stops, DNC matches, duplicate candidates, and errors.
 - Unit tests for environment loading, Phase 1 keyword categorization, and AppConfig discovery-target defaults.
 
 ### Fixed
@@ -40,7 +41,12 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 - Upgraded `googleapis` and removed the redundant direct `google-auth-library` dependency; Sheets auth now uses `google.auth.JWT` from the same dependency tree as `googleapis`.
 - Removed the vulnerable direct `uuid` dependency; the code uses `node:crypto` `randomUUID()`.
 - Discovery now refuses to run broad fallback searches when target terms are empty; it logs `missing_discovery_targets` instead.
+- Discovery now fetches Place Details for insertable leads so Phase 1 captures website/phone data that Text Search often omits, while counting Text Search pages and Details calls against the Places call budget.
 - Discovery rotation now respects the injected clock, improving deterministic tests/dry-runs.
+- Phase 1's zero-LLM promise is now enforced in code: the keyword categorizer does not consume LLM budget, and Config guardrails allow `maxResearchLlmCallsPerDay: 0` / `maxAgentMailDraftsPerDay: 0`.
+- Research attempt counting now uses existing `[research_attempt]` markers correctly before marking a lead `failed_permanent`.
+- CI now runs `npm run build` in addition to typecheck/lint/format/test, matching the documented quality gate.
+- Runtime env parsing now accepts every fallback notification channel documented in `.env.example` and doctor checks.
 - Pipeline DNC matching now normalizes phone/email/domain/business-name values consistently.
 - Pipeline no longer writes every lead on every run due to the always-true `lead.dnc !== undefined` condition; writes now depend on explicit dirty/stage-change state.
 - Pipeline rescheduling now uses the sweep's captured `now` value instead of fresh `Date.now()` calls.

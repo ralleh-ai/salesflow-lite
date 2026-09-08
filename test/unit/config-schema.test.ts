@@ -13,9 +13,20 @@ describe("GuardrailsSchema", () => {
     expect(parsed.pipelineCronIntervalMinutes).toBe(30);
   });
 
-  it("rejects non-positive values so a bad Config tab entry fails loudly", () => {
+  it("rejects impossible negative values so a bad Config tab entry fails loudly", () => {
     expect(() => GuardrailsSchema.parse({ maxPlacesApiCallsPerDay: 0 })).toThrow();
     expect(() => GuardrailsSchema.parse({ maxAgentMailDraftsPerDay: -5 })).toThrow();
+  });
+
+  it("allows zero LLM and draft budgets for the Phase 1 cheapest-useful default", () => {
+    const parsed = GuardrailsSchema.parse({
+      maxResearchLlmCallsPerDay: 0,
+      maxAgentMailDraftsPerDay: 0,
+      maxScrapeFetchesPerDay: 0
+    });
+    expect(parsed.maxResearchLlmCallsPerDay).toBe(0);
+    expect(parsed.maxAgentMailDraftsPerDay).toBe(0);
+    expect(parsed.maxScrapeFetchesPerDay).toBe(0);
   });
 });
 

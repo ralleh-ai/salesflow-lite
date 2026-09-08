@@ -2,10 +2,10 @@
 import { createAgentMailClient } from "../src/agentmail/client.js";
 import { loadEnvConfig } from "../src/config/env.js";
 import { runDoctor } from "../src/doctor/run.js";
-import { runDiscoverySweep } from "../src/discovery/sweep.js";
+import { type DiscoverySweepSummary, runDiscoverySweep } from "../src/discovery/sweep.js";
 import { createKeywordCategorizer } from "../src/models/categorize.js";
 import { runPipelineSweep } from "../src/pipeline/sweep.js";
-import { runResearchPass } from "../src/research/pass.js";
+import { type ResearchPassSummary, runResearchPass } from "../src/research/pass.js";
 import { createSheetsClient } from "../src/sheets/client.js";
 
 type Command = "doctor" | "discover" | "research" | "pipeline" | "run-batch" | "help";
@@ -70,6 +70,53 @@ function render(result: unknown, json: boolean): void {
   else console.log(JSON.stringify(result, null, 2));
 }
 
+function renderLeadPackSummary(params: {
+  mode: "lead-pack" | "lead-pack-plus-crm-outreach";
+  startedAt: string;
+  finishedAt: string;
+  discovery?: DiscoverySweepSummary;
+  research?: ResearchPassSummary;
+  outreachAttempted: boolean;
+}): string {
+  const lines = [
+    "SalesFlow-Lite run complete.",
+    `Mode: ${params.mode}`,
+    `Started: ${params.startedAt}`,
+    `Finished: ${params.finishedAt}`
+  ];
+
+  if (params.discovery) {
+    lines.push(
+      `Discovery: ${params.discovery.newLeads} new lead(s), ${params.discovery.searchedQueries} query/queries, ${params.discovery.placesApiCallsUsed} Places API call(s), ${params.discovery.duplicateCandidates} duplicate candidate(s), ${params.discovery.dncMatches} DNC match(es), ${params.discovery.errors} error(s).`
+    );
+    if (params.discovery.skippedBecauseMissingTargets) {
+      lines.push("Discovery stopped: Config.discoveryTargetBusinessTypes is empty.");
+    } else if (params.discovery.stoppedBecauseBudgetHit) {
+      lines.push("Discovery stopped early: Places API call budget was hit.");
+    }
+  }
+
+  if (params.research) {
+    lines.push(
+      `Research: ${params.research.processedLeads} processed, ${params.research.completedLeads} completed, ${params.research.failedPermanentLeads} failed permanent, ${params.research.scrapeFetchesUsed} scrape fetch(es), ${params.research.categorizationRuns} categorization run(s), ${params.research.llmCallsUsed} LLM call(s), ${params.research.errors} error(s).`
+    );
+    if (params.research.stoppedBecauseScrapeBudgetHit) {
+      lines.push("Research note: scrape budget was hit.");
+    }
+    if (params.research.stoppedBecauseLlmBudgetHit) {
+      lines.push("Research note: LLM budget was hit.");
+    }
+  }
+
+  lines.push(
+    params.outreachAttempted
+      ? "Outreach: draft creation was requested; review provider drafts before sending anything."
+      : "Outreach: skipped. Phase 1 never sends or creates drafts by default."
+  );
+
+  return lines.join("\n");
+}
+
 async function withSheets() {
   const env = loadEnvConfig();
   const sheets = createSheetsClient(env.googleSheetsSpreadsheetId, env.googleServiceAccountKeyPath);
@@ -94,22 +141,34 @@ async function main(): Promise<void> {
   const { env, sheets } = await withSheets();
 
   if (options.command === "discover") {
-    await runDiscoverySweep({ sheets, placesApiKey: env.googlePlacesApiKey });
+    const discovery = await runDiscoverySweep({ sheets, placesApiKey: env.googlePlacesApiKey });
     render(
-      { command: options.command, startedAt, finishedAt: new Date().toISOString(), ok: true },
+      {
+        command: options.command,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        ok: true,
+        discovery
+      },
       options.json
     );
     return;
   }
 
   if (options.command === "research") {
-    await runResearchPass({
+    const research = await runResearchPass({
       sheets,
       categorizer: createKeywordCategorizer(),
       repoRoot: options.repoRoot
     });
     render(
-      { command: options.command, startedAt, finishedAt: new Date().toISOString(), ok: true },
+      {
+        command: options.command,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        ok: true,
+        research
+      },
       options.json
     );
     return;
@@ -132,8 +191,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  await runDiscoverySweep({ sheets, placesApiKey: env.googlePlacesApiKey });
-  await runResearchPass({
+  const discovery = await runDiscoverySweep({ sheets, placesApiKey: env.googlePlacesApiKey });
+  const research = await runResearchPass({
     sheets,
     categorizer: createKeywordCategorizer(),
     repoRoot: options.repoRoot
@@ -149,14 +208,30 @@ async function main(): Promise<void> {
     });
   }
 
+  const mode: "lead-pack" | "lead-pack-plus-crm-outreach" = options.withOutreach
+    ? "lead-pack-plus-crm-outreach"
+    : "lead-pack";
+  const result = {
+    command: options.command,
+    mode,
+    startedAt,
+    finishedAt: new Date().toISOString(),
+    ok: true,
+    discovery,
+    research
+  };
+
   render(
-    {
-      command: options.command,
-      mode: options.withOutreach ? "lead-pack-plus-crm-outreach" : "lead-pack",
-      startedAt,
-      finishedAt: new Date().toISOString(),
-      ok: true
-    },
+    options.json
+      ? result
+      : renderLeadPackSummary({
+          mode: result.mode,
+          startedAt: result.startedAt,
+          finishedAt: result.finishedAt,
+          discovery,
+          research,
+          outreachAttempted: options.withOutreach
+        }),
     options.json
   );
 }

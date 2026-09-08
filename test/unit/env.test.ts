@@ -56,4 +56,12 @@ describe("loadEnvConfig", () => {
     delete process.env.GOOGLE_PLACES_API_KEY;
     expect(() => loadEnvConfig()).toThrow(/GOOGLE_PLACES_API_KEY/);
   });
+
+  it("accepts every documented notification fallback channel", () => {
+    setBaseEnv();
+    for (const channel of ["telegram", "email", "sms", "discord", "slack", "webhook", "none"]) {
+      process.env.NOTIFICATION_CHANNEL = channel;
+      expect(loadEnvConfig().notificationChannel).toBe(channel);
+    }
+  });
 });

@@ -44,6 +44,17 @@ Ask only what is needed to produce the first useful lead pack:
 
 Do **not** ask about pipeline stages, digest cadence, collateral maps, lost reasons, or email-provider setup during Phase 1.
 
+## 1a. Business-practice filter
+
+Before spending API calls, sanity-check the offer and market like a competent sales operator:
+
+- The offer should be something the business can sell and fulfill now.
+- The buyer types should be specific enough that a human would recognize why they might need the offer.
+- The first lead pack should prove targeting quality, not maximize volume.
+- Avoid sensitive, regulated, or reputation-risky outreach unless the operator has a compliance process.
+- Do not use scare tactics, fake familiarity, scraped personal details, or misleading urgency in any draft.
+- If the best targeting terms are vague (`businesses`, `companies`, `local shops`), stop and ask for a tighter niche.
+
 ## 2. Prepare credentials
 
 Follow `docs/GOOGLE_CLOUD_SETUP.md`.
@@ -69,6 +80,38 @@ Create tabs:
 - `Errors`
 - `Comms_Threads`
 - `DoNotContact`
+
+Use these header rows exactly. The app writes by column position.
+
+`Leads`:
+
+```text
+lead_id, place_id, business_name, category_raw, address, lat, lng, phone, website, email, socials, research_score, research_status, product_fit_category, product_fit_confidence, product_fit_rationale, pipeline_stage, pipeline_stage_since, next_action_at, next_action_type, owner, source_query, source, discovered_at, last_touched_at, notes, dnc, snooze_until, dup_of_lead_id
+```
+
+`History`:
+
+```text
+event_id, lead_id, timestamp, actor, event_type, from_value, to_value, detail
+```
+
+`Errors`:
+
+```text
+timestamp, component, lead_id, error_type, message, retry_count
+```
+
+`Comms_Threads`:
+
+```text
+thread_event_id, lead_id, channel, direction, timestamp, subject, summary, body_ref, external_thread_id, logged_by, sentiment
+```
+
+`DoNotContact`:
+
+```text
+dnc_id, matched_field, matched_value, reason, added_at, added_by
+```
 
 Populate the `Config` tab with a row:
 
@@ -137,6 +180,8 @@ npm test
 
 Do not run discovery until doctor has no failures.
 
+The Phase 1 sample config intentionally sets `maxResearchLlmCallsPerDay` and `maxAgentMailDraftsPerDay` to `0`. That is valid: the default keyword categorizer is deterministic and does not consume LLM budget, and Phase 1 does not create outreach drafts.
+
 ## 6. Run a first lead pack
 
 ```bash
@@ -156,13 +201,16 @@ Summarize:
 
 - number of new leads,
 - target ZIPs/terms searched,
+- Places API calls used, including Text Search pages and Place Details calls,
 - visible failures from `Errors`,
-- approximate API usage,
+- scrape/categorization counts,
 - top-fit leads,
 - suggested targeting changes,
 - whether a second batch is worth running.
 
 Ask before increasing limits or enabling recurring runs.
+
+Phase 1 is complete only when the operator can inspect the Sheet and answer: “Are these the kinds of businesses I would actually want to contact?” If not, adjust `discoveryTargetBusinessTypes` and `categories.md` before running a larger batch.
 
 ---
 

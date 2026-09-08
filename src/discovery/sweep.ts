@@ -4,7 +4,7 @@
  *
  * Responsibilities (per spec, do not narrow scope without updating SPEC.md):
  *   1. Read Config (areas x target business types).
- *   2. Call Places API (Nearby/Text Search), paginated.
+ *   2. Call Places API Text Search, then Place Details for insertable leads.
  *   3. Dedupe on place_id against existing Leads rows.
  *   4. Run the duplicate/conflict check (SPEC §4.2) before inserting — phone
  *      match, then normalized name+zip match against existing Leads.
@@ -104,6 +104,29 @@ interface PlacesApiResponse {
   error_message?: string;
 }
 
+interface PlacesDetailsResponse {
+  result?: Partial<PlacesApiResult>;
+  status: string;
+  error_message?: string;
+}
+
+export interface DiscoverySweepSummary {
+  searchedQueries: number;
+  placesApiCallsUsed: number;
+  newLeads: number;
+  duplicateCandidates: number;
+  dncMatches: number;
+  errors: number;
+  skippedBecauseMissingTargets: boolean;
+  stoppedBecauseBudgetHit: boolean;
+}
+
+interface PlacesResultsFetch {
+  results: PlacesApiResult[];
+  apiCallsUsed: number;
+  stoppedBecauseBudgetHit: boolean;
+}
+
 /**
  * Calls Google Places API Text Search for one ZIP-anchored geography +
  * business-type query, following pagination and respecting rate-limit
@@ -113,13 +136,19 @@ interface PlacesApiResponse {
 async function fetchPlacesResults(
   apiKey: string,
   zipCode: string,
-  businessType: string
-): Promise<PlacesApiResult[]> {
+  businessType: string,
+  maxApiCalls: number
+): Promise<PlacesResultsFetch> {
   const results: PlacesApiResult[] = [];
   let pageToken: string | undefined;
   let attempt = 0;
+  let apiCallsUsed = 0;
 
   do {
+    if (apiCallsUsed >= maxApiCalls) {
+      return { results, apiCallsUsed, stoppedBecauseBudgetHit: true };
+    }
+
     const params = new URLSearchParams({
       query: `${businessType} near ${zipCode}`,
       radius: String(DISCOVERY_SEARCH_RADIUS_METERS),
@@ -134,6 +163,7 @@ async function fetchPlacesResults(
     const res = await fetch(
       `https://maps.googleapis.com/maps/api/place/textsearch/json?${params.toString()}`
     );
+    apiCallsUsed += 1;
     const body = (await res.json()) as PlacesApiResponse;
 
     if (body.status === "OVER_QUERY_LIMIT" || res.status === 429) {
@@ -159,7 +189,29 @@ async function fetchPlacesResults(
     attempt = 0;
   } while (pageToken);
 
-  return results;
+  return { results, apiCallsUsed, stoppedBecauseBudgetHit: false };
+}
+
+/** Fetches Place Details for fields that Text Search often omits (website/phone). Counts as one Places call. */
+async function fetchPlaceDetails(
+  apiKey: string,
+  placeId: string
+): Promise<Partial<PlacesApiResult>> {
+  const params = new URLSearchParams({
+    place_id: placeId,
+    fields: "place_id,name,formatted_address,geometry,type,formatted_phone_number,website",
+    key: apiKey
+  });
+  const res = await fetch(
+    `https://maps.googleapis.com/maps/api/place/details/json?${params.toString()}`
+  );
+  const body = (await res.json()) as PlacesDetailsResponse;
+  if (body.status !== "OK") {
+    throw new Error(
+      `Places Details error for place_id=${placeId}: ${body.status} ${body.error_message ?? ""}`.trim()
+    );
+  }
+  return body.result ?? {};
 }
 
 /** Checks a Places result against the DoNotContact list (SPEC §6.5) by phone/business-name; domain/email matching happens later once research populates those fields. */
@@ -195,9 +247,19 @@ export interface DiscoverySweepDeps {
  * requirement, kept intentionally simple: rotate start offset by time
  * rather than persisting separate per-combination cursors).
  */
-export async function runDiscoverySweep(deps: DiscoverySweepDeps): Promise<void> {
+export async function runDiscoverySweep(deps: DiscoverySweepDeps): Promise<DiscoverySweepSummary> {
   const { sheets, placesApiKey } = deps;
   const nowIso = deps.nowIso ?? (() => new Date().toISOString());
+  const summary: DiscoverySweepSummary = {
+    searchedQueries: 0,
+    placesApiCallsUsed: 0,
+    newLeads: 0,
+    duplicateCandidates: 0,
+    dncMatches: 0,
+    errors: 0,
+    skippedBecauseMissingTargets: false,
+    stoppedBecauseBudgetHit: false
+  };
   const config = await sheets.getConfig();
   const [existingLeads, dncList] = await Promise.all([
     sheets.getLeads(),
@@ -206,6 +268,7 @@ export async function runDiscoverySweep(deps: DiscoverySweepDeps): Promise<void>
 
   const businessTypes = config.discoveryTargetBusinessTypes;
   if (businessTypes.length === 0) {
+    summary.skippedBecauseMissingTargets = true;
     await sheets.appendError({
       timestamp: nowIso(),
       component: "discovery_cron",
@@ -214,29 +277,36 @@ export async function runDiscoverySweep(deps: DiscoverySweepDeps): Promise<void>
         "Config.discoveryTargetBusinessTypes is empty. Refusing to run an expensive broad Places search; configure 3-5 explicit target business types first.",
       retryCount: 0
     });
-    return;
+    summary.errors += 1;
+    return summary;
   }
 
   const geographies: Geography[] = config.geographies;
   const combinations = geographies.flatMap((geo) => businessTypes.map((type) => ({ geo, type })));
-  if (combinations.length === 0) return;
+  if (combinations.length === 0) return summary;
 
   // Rotate the starting combination by hour-of-day so a budget-exhausted
   // run doesn't always starve the same tail-end combinations (SPEC §4 step 10).
   const rotationOffset = new Date(nowIso()).getUTCHours() % combinations.length;
   const rotated = [...combinations.slice(rotationOffset), ...combinations.slice(0, rotationOffset)];
 
-  let callsUsed = 0;
   const maxCalls = config.guardrails.maxPlacesApiCallsPerDay;
   const knownPlaceIds = new Set(existingLeads.map((l) => l.placeId).filter(Boolean));
 
   for (const { geo, type } of rotated) {
-    if (callsUsed >= maxCalls) break;
+    if (summary.placesApiCallsUsed >= maxCalls) {
+      summary.stoppedBecauseBudgetHit = true;
+      break;
+    }
 
     let placesResults: PlacesApiResult[];
     try {
-      placesResults = await fetchPlacesResults(placesApiKey, geo.zipCode, type);
-      callsUsed += 1;
+      const remainingCalls = maxCalls - summary.placesApiCallsUsed;
+      const fetched = await fetchPlacesResults(placesApiKey, geo.zipCode, type, remainingCalls);
+      placesResults = fetched.results;
+      summary.placesApiCallsUsed += fetched.apiCallsUsed;
+      summary.searchedQueries += 1;
+      if (fetched.stoppedBecauseBudgetHit) summary.stoppedBecauseBudgetHit = true;
     } catch (err) {
       await sheets.appendError({
         timestamp: nowIso(),
@@ -245,31 +315,53 @@ export async function runDiscoverySweep(deps: DiscoverySweepDeps): Promise<void>
         message: err instanceof Error ? err.message : String(err),
         retryCount: 0
       });
+      summary.errors += 1;
       continue;
     }
 
     for (const result of placesResults) {
+      if (summary.placesApiCallsUsed >= maxCalls) {
+        summary.stoppedBecauseBudgetHit = true;
+        break;
+      }
       if (knownPlaceIds.has(result.place_id)) continue;
       knownPlaceIds.add(result.place_id);
 
+      let enriched: PlacesApiResult = result;
+      try {
+        const details = await fetchPlaceDetails(placesApiKey, result.place_id);
+        summary.placesApiCallsUsed += 1;
+        enriched = { ...result, ...details };
+      } catch (err) {
+        summary.placesApiCallsUsed += 1;
+        summary.errors += 1;
+        await sheets.appendError({
+          timestamp: nowIso(),
+          component: "discovery_cron",
+          errorType: "places_details_error",
+          message: err instanceof Error ? err.message : String(err),
+          retryCount: 0
+        });
+      }
+
       const candidate: Pick<Lead, "phone" | "businessName" | "address"> = {
-        businessName: result.name,
-        address: result.formatted_address,
-        ...(result.formatted_phone_number ? { phone: result.formatted_phone_number } : {})
+        businessName: enriched.name,
+        address: enriched.formatted_address,
+        ...(enriched.formatted_phone_number ? { phone: enriched.formatted_phone_number } : {})
       };
       const dupOfLeadId = checkForDuplicateLead(candidate, existingLeads);
-      const dnc = matchesDoNotContact(result, dncList);
+      const dnc = matchesDoNotContact(enriched, dncList);
       const timestamp = nowIso();
       const leadId = randomUUID();
 
       const lead: Lead = {
         leadId,
-        placeId: result.place_id,
-        businessName: result.name,
-        categoryRaw: (result.types ?? []).join(", "),
-        address: result.formatted_address,
-        lat: result.geometry.location.lat,
-        lng: result.geometry.location.lng,
+        placeId: enriched.place_id,
+        businessName: enriched.name,
+        categoryRaw: (enriched.types ?? []).join(", "),
+        address: enriched.formatted_address,
+        lat: enriched.geometry.location.lat,
+        lng: enriched.geometry.location.lng,
         researchScore: 0,
         researchStatus: "pending",
         pipelineStage: "new",
@@ -280,10 +372,16 @@ export async function runDiscoverySweep(deps: DiscoverySweepDeps): Promise<void>
         lastTouchedAt: timestamp,
         dnc
       };
+      if (enriched.formatted_phone_number !== undefined)
+        lead.phone = enriched.formatted_phone_number;
+      if (enriched.website !== undefined) lead.website = enriched.website;
       if (dupOfLeadId !== undefined) lead.dupOfLeadId = dupOfLeadId;
 
       await sheets.upsertLead(lead);
       existingLeads.push(lead);
+      summary.newLeads += 1;
+      if (dupOfLeadId !== undefined) summary.duplicateCandidates += 1;
+      if (dnc) summary.dncMatches += 1;
 
       await sheets.appendHistoryEvent({
         eventId: randomUUID(),
@@ -298,4 +396,6 @@ export async function runDiscoverySweep(deps: DiscoverySweepDeps): Promise<void>
       });
     }
   }
+
+  return summary;
 }

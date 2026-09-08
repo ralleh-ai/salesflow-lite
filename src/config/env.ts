@@ -16,14 +16,22 @@ export interface EnvConfig {
   emailProvider: "none" | "agentmail";
   agentMailApiKey?: string | undefined;
   agentMailInboxId?: string | undefined;
-  notificationChannel: "telegram" | "email" | "none";
+  notificationChannel: "telegram" | "email" | "sms" | "discord" | "slack" | "webhook" | "none";
   notificationTarget?: string | undefined;
   nodeEnv: "development" | "production" | "test";
   logLevel: "debug" | "info" | "warn" | "error";
 }
 
 const EMAIL_PROVIDERS = ["none", "agentmail"] as const;
-const NOTIFICATION_CHANNELS = ["telegram", "email", "none"] as const;
+const NOTIFICATION_CHANNELS = [
+  "telegram",
+  "email",
+  "sms",
+  "discord",
+  "slack",
+  "webhook",
+  "none"
+] as const;
 const NODE_ENVS = ["development", "production", "test"] as const;
 const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 

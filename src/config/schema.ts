@@ -9,9 +9,11 @@ import { z } from "zod";
 
 export const GuardrailsSchema = z.object({
   maxPlacesApiCallsPerDay: z.number().int().positive().default(50),
-  maxResearchLlmCallsPerDay: z.number().int().positive().default(100),
-  maxScrapeFetchesPerDay: z.number().int().positive().default(150),
-  maxAgentMailDraftsPerDay: z.number().int().positive().default(25),
+  /** May be 0 for the Phase 1 zero-LLM keyword-categorization default. */
+  maxResearchLlmCallsPerDay: z.number().int().nonnegative().default(100),
+  maxScrapeFetchesPerDay: z.number().int().nonnegative().default(150),
+  /** May be 0 until Phase 4 CRM-lite outreach drafts are explicitly enabled. */
+  maxAgentMailDraftsPerDay: z.number().int().nonnegative().default(25),
   discoveryCronIntervalMinutes: z.number().int().positive().default(240),
   researchCronIntervalMinutes: z.number().int().positive().default(20),
   pipelineCronIntervalMinutes: z.number().int().positive().default(30),

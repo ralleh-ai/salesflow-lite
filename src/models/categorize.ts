@@ -26,6 +26,8 @@ export interface CategorizationResult {
 }
 
 export interface LlmCategorizationClient {
+  /** True when this categorizer consumes paid/model LLM budget. False for deterministic local categorization. */
+  readonly consumesLlmBudget?: boolean;
   categorize(input: CategorizationInput): Promise<CategorizationResult>;
 }
 
@@ -79,6 +81,8 @@ export function parseCategorizationResponse(raw: string): CategorizationResult {
 export type ModelInvoker = (params: { modelId: string; prompt: string }) => Promise<string>;
 
 class GenericLlmCategorizer implements LlmCategorizationClient {
+  readonly consumesLlmBudget = true;
+
   constructor(
     private readonly invokeModel: ModelInvoker,
     private readonly resolvedModel: Pick<ResolvedModelForTask, "modelId">
@@ -141,6 +145,7 @@ function termMatches(haystack: string, term: string): boolean {
  */
 export function createKeywordCategorizer(): LlmCategorizationClient {
   return {
+    consumesLlmBudget: false,
     async categorize(input: CategorizationInput): Promise<CategorizationResult> {
       const haystack = [input.businessName, input.placesCategory, input.scrapedDescription ?? ""]
         .join("\n")
