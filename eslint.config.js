@@ -15,7 +15,8 @@ export default [
         sourceType: "module"
       },
       globals: {
-        ...globals.node
+        ...globals.node,
+        ...globals.browser
       }
     },
     plugins: {
@@ -23,6 +24,7 @@ export default [
     },
     rules: {
       ...tsPlugin.configs.recommended.rules,
+      "no-undef": "off",
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
       "@typescript-eslint/explicit-function-return-type": "off",
       "no-console": ["warn", { allow: ["warn", "error"] }]
@@ -39,7 +41,7 @@ export default [
         project: "./tsconfig.json",
         sourceType: "module"
       },
-      globals: {
+  globals: {
         ...globals.node
       }
     },
@@ -48,6 +50,7 @@ export default [
     },
     rules: {
       ...tsPlugin.configs.recommended.rules,
+      "no-undef": "off",
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
       "@typescript-eslint/explicit-function-return-type": "off",
       "no-console": "off"
