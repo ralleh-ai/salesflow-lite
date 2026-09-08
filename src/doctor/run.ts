@@ -1,7 +1,7 @@
 /**
  * Doctor orchestrator — runs all registered checks, optionally applies safe
- * fixes, and returns a structured report. The CLI in bin/doctor.ts renders
- * this; keep this module free of console.log/process.exit so it stays
+ * fixes, and returns a structured report. The CLI in bin/salesflow-lite.ts
+ * renders this; keep this module free of console.log/process.exit so it stays
  * testable and reusable (e.g. from a future `salesflow-lite doctor` cron
  * job or health-check endpoint).
  */

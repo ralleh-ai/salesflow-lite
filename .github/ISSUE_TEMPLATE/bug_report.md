@@ -7,12 +7,13 @@ labels: bug
 **Describe the bug**
 A clear, concise description of what went wrong.
 
-**Which cron/module?**
+**Which phase/module?**
+- [ ] Phase 1 batch scout
 - [ ] Discovery
-- [ ] Research
-- [ ] Pipeline
+- [ ] Research/categorization
+- [ ] CRM-lite pipeline
 - [ ] Sheets client
-- [ ] AgentMail integration
+- [ ] AgentMail draft integration
 - [ ] Other (describe)
 
 **Steps to reproduce**

@@ -44,6 +44,13 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 - Pipeline no longer writes every lead on every run due to the always-true `lead.dnc !== undefined` condition; writes now depend on explicit dirty/stage-change state.
 - Pipeline rescheduling now uses the sweep's captured `now` value instead of fresh `Date.now()` calls.
 
+### Removed (cleanup)
+
+- Removed the duplicate legacy `bin/doctor.ts` entrypoint; `npm run doctor`, `npm run doctor:fix`, and `npm run lead:doctor` now route through the unified `bin/salesflow-lite.ts` CLI.
+- Removed generated local `dist/` build output from the working tree; it remains ignored.
+- Removed empty placeholder ADR/test/source directories and the stale historical `docs/CODE_REVIEW.md` file now covered by git history and this changelog.
+- Removed the unused placeholder `src/index.ts` barrel/entrypoint so the repo has one clear executable surface: the CLI plus directly imported modules.
+
 ### Known hardening items
 
 - Add a persistent usage ledger before trusting Phase 3 recurring mode.
@@ -63,4 +70,4 @@ Format loosely follows [Keep a Changelog](https://keepachangelog.com/).
 - Implemented real code paths for Google Sheets access, AgentMail draft creation, Google Places discovery, website research, LLM categorization interface, and CRM-lite pipeline sweep.
 - Added `Comms_Threads`, `DoNotContact`, snooze, duplicate detection, model/token-budget awareness, and draft-only outreach invariants.
 
-See git history and `docs/CODE_REVIEW.md` for the detailed pre-refactor review notes from the original CRM-first design arc.
+See git history for the detailed pre-refactor review notes from the original CRM-first design arc.

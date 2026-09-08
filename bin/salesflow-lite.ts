@@ -15,6 +15,7 @@ interface CliOptions {
   repoRoot: string;
   json: boolean;
   withOutreach: boolean;
+  applyFixes: boolean;
 }
 
 function parseArgs(argv: string[]): CliOptions {
@@ -32,7 +33,8 @@ function parseArgs(argv: string[]): CliOptions {
     command,
     repoRoot,
     json: rest.includes("--json"),
-    withOutreach: rest.includes("--with-outreach")
+    withOutreach: rest.includes("--with-outreach"),
+    applyFixes: rest.includes("--fix")
   };
 }
 
@@ -40,7 +42,7 @@ function printHelp(): void {
   console.log(`SalesFlow-Lite — OpenClaw-native lead scout
 
 Usage:
-  npm run lead:doctor
+  npm run lead:doctor [-- --fix]
   npm run lead:discover -- [--json]
   npm run lead:research -- [--json]
   npm run lead:pipeline -- [--json]
@@ -82,7 +84,7 @@ async function main(): Promise<void> {
   }
 
   if (options.command === "doctor") {
-    const report = runDoctor({ cwd: options.repoRoot });
+    const report = runDoctor({ cwd: options.repoRoot, applyFixes: options.applyFixes });
     render(report, options.json);
     process.exitCode = report.healthy ? 0 : 1;
     return;

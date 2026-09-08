@@ -35,8 +35,8 @@ export default [
   },
   {
     // CLI entrypoint: console output is the entire point, and it's a thin
-    // rendering layer intentionally kept out of tsconfig's strict project
-    // scope for src/ — see bin/doctor.ts header comment.
+    // rendering layer intentionally kept out of src/ so command output and
+    // process exit behavior stay separate from reusable modules.
     files: ["bin/**/*.ts"],
     languageOptions: {
       parser: tsParser,
